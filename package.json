@@ -1,0 +1,11 @@
+{
+	"dependencies": {
+		"@nestjs/common": "^11.0.17",
+		"@nestjs/core": "^11.0.17",
+		"@nestjs/passport": "^11.0.5",
+		"@types/passport-jwt": "^4.0.1",
+		"chromadb": "^2.2.0",
+		"chromadb-default-embed": "^2.14.0",
+		"passport-jwt": "^4.0.1"
+	}
+}
