@@ -4,6 +4,4 @@ dist
 .env
 *.log
 .git
-.gitignore
-.dockerignore
 coverage

@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001); // Fallback to 3001, chromadb on 8000
+  const port = configService.get<number>('PORT', 3003); // Fallback to 3003, chromadb on 8000
   await app.listen(port);
 }
 bootstrap();

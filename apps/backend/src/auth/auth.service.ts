@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AuthService {
@@ -13,12 +14,12 @@ export class AuthService {
     private configService: ConfigService,
     private httpService: HttpService,
   ) {
-    const host = this.configService.get<string>('CHROMADB_HOST', 'localhost');
+    const host = this.configService.get<string>('CHROMADB_HOST', 'chromadb');
     const port = this.configService.get<string>('CHROMADB_PORT', '8000');
     const secret = this.configService.get<string>('JWT_SECRET', 'my-secret-key');
     console.log('JWT_SECRET:', secret);
     console.log('ChromaDB:', `http://${host}:${port}`);
-    this.baseUrl = `http://${host}:${port}/api/v1`;
+    this.baseUrl = `http://${host}:${port}/api/v2`;
     this.initUsersCollection().catch(err => console.error('Init users collection error:', err.message));
   }
 
@@ -38,7 +39,7 @@ export class AuthService {
       console.log('Users collection created');
     } catch (error) {
       console.error('Failed to initialize users collection:', error.message);
-      throw new InternalServerErrorException('Failed to connect to users database.');
+      throw new InternalServerErrorException(`Failed to connect to users database: ${error.message}`);
     }
   }
 
@@ -49,16 +50,16 @@ export class AuthService {
       );
       const users = response.data;
       const user = users.metadatas?.find(u => u.email === email);
-      if (user && pass === 'password') {
+      if (user && await bcrypt.compare(pass, user.password)) {
         return { id: users.ids[users.metadatas.indexOf(user)], email, role: user.role || 'user' };
       }
       return null;
     } catch (error) {
-      console.error('Validate user error:', error.message);
-      throw new InternalServerErrorException('Failed to validate user');
+      console.error('Validate user error:', error.response ? error.response.data : error.message);
+      throw new InternalServerErrorException(`Failed to validate user: ${error.message}`);
     }
   }
-
+  
   async signup(email: string, password: string, role: string = 'user') {
     try {
       const response = await firstValueFrom(
@@ -70,10 +71,11 @@ export class AuthService {
         throw new ForbiddenException('Email already exists');
       }
       const id = `user_${Date.now()}`;
+      const hashedPassword = await bcrypt.hash(password, 10);
       await firstValueFrom(
         this.httpService.post(`${this.baseUrl}/collections/users/add`, {
           documents: [`User ${email}`],
-          metadatas: [{ email, role }],
+          metadatas: [{ email, password: hashedPassword, role }],
           ids: [id],
         }),
       );
@@ -81,7 +83,7 @@ export class AuthService {
     } catch (error) {
       console.error('Signup error:', error.message);
       if (error instanceof ForbiddenException) throw error;
-      throw new InternalServerErrorException('Failed to sign up user');
+      throw new InternalServerErrorException(`Failed to sign up user: ${error.message}`);
     }
   }
 

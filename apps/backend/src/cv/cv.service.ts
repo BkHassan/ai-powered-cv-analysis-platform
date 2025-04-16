@@ -13,7 +13,7 @@ export class CvService {
   ) {
     const host = this.configService.get<string>('CHROMADB_HOST', 'chromadb');
     const port = this.configService.get<string>('CHROMADB_PORT', '8000');
-    this.baseUrl = `http://${host}:${port}/api/v1`;
+    this.baseUrl = `http://${host}:${port}/api/v2`;
     console.log('ChromaDB URL:', this.baseUrl);
     this.initCollection().catch(err => console.error('Init CV collection error:', err.message));
   }
@@ -34,7 +34,7 @@ export class CvService {
       console.log('CV collection created');
     } catch (error) {
       console.error('Failed to initialize cvCollection:', error.message);
-      throw new InternalServerErrorException('Failed to connect to CV database.');
+      throw new InternalServerErrorException(`Failed to connect to CV database: ${error.message}`);
     }
   }
 

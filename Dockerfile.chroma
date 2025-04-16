@@ -1,2 +1,0 @@
-FROM ghcr.io/chroma-core/chroma:0.4.15
-RUN pip install --force-reinstall numpy==1.26.4 onnxruntime==1.16.3

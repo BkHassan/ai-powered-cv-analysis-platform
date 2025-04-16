@@ -16,6 +16,7 @@ exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const auth_service_1 = require("./auth.service");
 const config_1 = require("@nestjs/config");
+const common_2 = require("@nestjs/common");
 let AuthController = class AuthController {
     authService;
     configService;
@@ -25,8 +26,9 @@ let AuthController = class AuthController {
     }
     async login(body) {
         const user = await this.authService.validateUser(body.email, body.password);
-        if (!user)
-            throw new Error('Invalid credentials');
+        if (!user) {
+            throw new common_2.UnauthorizedException('Invalid credentials');
+        }
         return this.authService.login(user);
     }
     async signup(body) {

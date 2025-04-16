@@ -7,7 +7,7 @@ export declare class AuthService {
     private httpService;
     private baseUrl;
     constructor(jwtService: JwtService, configService: ConfigService, httpService: HttpService);
-    initUsersCollection(): Promise<any>;
+    initUsersCollection(): Promise<void>;
     validateUser(email: string, pass: string): Promise<any>;
     signup(email: string, password: string, role?: string): Promise<{
         access_token: string;

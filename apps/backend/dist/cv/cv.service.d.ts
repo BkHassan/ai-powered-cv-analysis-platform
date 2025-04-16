@@ -5,7 +5,7 @@ export declare class CvService {
     private httpService;
     private baseUrl;
     constructor(configService: ConfigService, httpService: HttpService);
-    initCollection(): Promise<any>;
+    initCollection(): Promise<void>;
     uploadCv(cv: {
         id: string;
         name: string;

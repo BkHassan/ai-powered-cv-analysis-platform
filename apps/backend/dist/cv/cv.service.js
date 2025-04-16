@@ -21,25 +21,26 @@ let CvService = class CvService {
     constructor(configService, httpService) {
         this.configService = configService;
         this.httpService = httpService;
-        const host = this.configService.get('CHROMADB_HOST', 'localhost');
+        const host = this.configService.get('CHROMADB_HOST', 'chromadb');
         const port = this.configService.get('CHROMADB_PORT', '8000');
-        console.log('ChromaDB URL:', `http://${host}:${port}`);
-        this.baseUrl = `http://${host}:${port}/api/v1`;
-        this.initCollection();
+        this.baseUrl = `http://${host}:${port}/api/v2`;
+        console.log('ChromaDB URL:', this.baseUrl);
+        this.initCollection().catch(err => console.error('Init CV collection error:', err.message));
     }
     async initCollection() {
         try {
-            const response = await (0, rxjs_1.firstValueFrom)(this.httpService.get(`${this.baseUrl}/collections/cv`));
-            if (response.data) {
+            const response = await (0, rxjs_1.firstValueFrom)(this.httpService.get(`${this.baseUrl}/collections`));
+            const collections = response.data;
+            if (collections.some(c => c.name === 'cv')) {
                 console.log('CV collection exists');
-                return response.data;
+                return;
             }
             await (0, rxjs_1.firstValueFrom)(this.httpService.post(`${this.baseUrl}/collections`, { name: 'cv' }));
             console.log('CV collection created');
         }
         catch (error) {
-            console.error('Failed to initialize cvCollection:', error);
-            throw new common_1.InternalServerErrorException('Failed to connect to CV database.');
+            console.error('Failed to initialize cvCollection:', error.message);
+            throw new common_1.InternalServerErrorException(`Failed to connect to CV database: ${error.message}`);
         }
     }
     async uploadCv(cv, user) {
@@ -60,7 +61,7 @@ let CvService = class CvService {
             return { id, ...cvWithoutId };
         }
         catch (error) {
-            console.error('Upload CV error:', error);
+            console.error('Upload CV error:', error.message);
             throw new common_1.InternalServerErrorException('Failed to upload CV');
         }
     }
@@ -82,7 +83,7 @@ let CvService = class CvService {
             return { message: 'CV assigned successfully' };
         }
         catch (error) {
-            console.error('Assign CV error:', error);
+            console.error('Assign CV error:', error.message);
             throw new common_1.InternalServerErrorException('Failed to assign CV');
         }
     }
