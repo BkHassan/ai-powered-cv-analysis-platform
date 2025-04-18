@@ -1,23 +1,9 @@
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
+import { CreateCvDto } from './dto/create-cv.dto';
+import { UpdateCvDto } from './dto/update-cv.dto';
 export declare class CvService {
-    private configService;
-    private httpService;
-    private baseUrl;
-    constructor(configService: ConfigService, httpService: HttpService);
-    initCollection(): Promise<void>;
-    uploadCv(cv: {
-        id: string;
-        name: string;
-        email: string;
-        skills: string[];
-    }, user: any): Promise<{
-        name: string;
-        email: string;
-        skills: string[];
-        id: string;
-    }>;
-    assignCv(cvId: string, userId: string, user: any): Promise<{
-        message: string;
-    }>;
+    create(createCvDto: CreateCvDto): string;
+    findAll(): string;
+    findOne(id: number): string;
+    update(id: number, updateCvDto: UpdateCvDto): string;
+    remove(id: number): string;
 }

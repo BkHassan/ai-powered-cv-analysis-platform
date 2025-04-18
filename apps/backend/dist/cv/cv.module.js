@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CvModule = void 0;
 const common_1 = require("@nestjs/common");
-const axios_1 = require("@nestjs/axios");
 const cv_service_1 = require("./cv.service");
 const cv_controller_1 = require("./cv.controller");
 let CvModule = class CvModule {
@@ -16,10 +15,8 @@ let CvModule = class CvModule {
 exports.CvModule = CvModule;
 exports.CvModule = CvModule = __decorate([
     (0, common_1.Module)({
-        imports: [axios_1.HttpModule],
-        providers: [cv_service_1.CvService],
         controllers: [cv_controller_1.CvController],
-        exports: [cv_service_1.CvService],
+        providers: [cv_service_1.CvService],
     })
 ], CvModule);
 //# sourceMappingURL=cv.module.js.map

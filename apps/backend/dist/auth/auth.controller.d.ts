@@ -1,29 +1,22 @@
 import { AuthService } from './auth.service';
-import { ConfigService } from '@nestjs/config';
+import { CreateAuthDto } from './dto/create-auth.dto';
+import { UpdateAuthDto } from './dto/update-auth.dto';
 export declare class AuthController {
-    private authService;
-    private configService;
-    constructor(authService: AuthService, configService: ConfigService);
-    login(body: {
-        email: string;
-        password: string;
-    }): Promise<{
-        access_token: string;
-    }>;
-    signup(body: {
-        email: string;
-        password: string;
-        role?: string;
-    }): Promise<{
-        access_token: string;
-    }>;
-    forgotPassword(email: string): Promise<{
+    private readonly authService;
+    constructor(authService: AuthService);
+    create(createAuthDto: CreateAuthDto): string;
+    findAll(): string;
+    findOne(id: string): string;
+    update(id: string, updateAuthDto: UpdateAuthDto): string;
+    remove(id: string): string;
+    signup(createAuthDto: CreateAuthDto): Promise<{
         message: string;
     }>;
-    clearUsers(): Promise<{
+    login(email: string, password: string): Promise<{
         message: string;
+        user: {
+            email: any;
+            role: any;
+        };
     }>;
-    getConfig(): {
-        jwtSecret: string;
-    };
 }

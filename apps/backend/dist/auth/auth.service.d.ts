@@ -1,24 +1,25 @@
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
+import { CreateAuthDto } from './dto/create-auth.dto';
+import { UpdateAuthDto } from './dto/update-auth.dto';
 export declare class AuthService {
-    private jwtService;
-    private configService;
-    private httpService;
-    private baseUrl;
-    constructor(jwtService: JwtService, configService: ConfigService, httpService: HttpService);
-    initUsersCollection(): Promise<void>;
-    validateUser(email: string, pass: string): Promise<any>;
-    signup(email: string, password: string, role?: string): Promise<{
-        access_token: string;
-    }>;
-    login(user: any): Promise<{
-        access_token: string;
-    }>;
-    forgotPassword(email: string): Promise<{
+    private client;
+    private collection;
+    private logger;
+    private defaultEF;
+    constructor();
+    onModuleInit(): Promise<void>;
+    create(createAuthDto: CreateAuthDto): string;
+    findAll(): string;
+    findOne(id: number): string;
+    update(id: number, updateAuthDto: UpdateAuthDto): string;
+    remove(id: number): string;
+    signup(createAuthDto: CreateAuthDto): Promise<{
         message: string;
     }>;
-    clearUsers(): Promise<{
+    login(email: string, password: string): Promise<{
         message: string;
+        user: {
+            email: any;
+            role: any;
+        };
     }>;
 }

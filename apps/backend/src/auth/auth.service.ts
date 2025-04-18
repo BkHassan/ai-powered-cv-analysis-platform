@@ -1,139 +1,104 @@
-import { Injectable, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import * as bcrypt from 'bcryptjs';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { CreateAuthDto } from './dto/create-auth.dto';
+import { UpdateAuthDto } from './dto/update-auth.dto';
+import * as chromadb from 'chromadb';
+import { DefaultEmbeddingFunction } from "chromadb";
 
 @Injectable()
 export class AuthService {
-  private baseUrl: string;
-
-  constructor(
-    private jwtService: JwtService,
-    private configService: ConfigService,
-    private httpService: HttpService,
-  ) {
-    const host = this.configService.get<string>('CHROMADB_HOST', 'chromadb');
-    const port = this.configService.get<string>('CHROMADB_PORT', '8000');
-    const secret = this.configService.get<string>('JWT_SECRET', 'my-secret-key');
-    console.log('JWT_SECRET:', secret);
-    console.log('ChromaDB:', `http://${host}:${port}`);
-    this.baseUrl = `http://${host}:${port}/api/v2`;
-    this.initUsersCollection().catch(err => console.error('Init users collection error:', err.message));
-  }
-
-  async initUsersCollection() {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/collections`),
-      );
-      const collections = response.data;
-      if (collections.some(c => c.name === 'users')) {
-        console.log('Users collection exists');
-        return;
-      }
-      await firstValueFrom(
-        this.httpService.post(`${this.baseUrl}/collections`, { name: 'users' }),
-      );
-      console.log('Users collection created');
-    } catch (error) {
-      console.error('Failed to initialize users collection:', error.message);
-      throw new InternalServerErrorException(`Failed to connect to users database: ${error.message}`);
-    }
-  }
-
-  async validateUser(email: string, pass: string): Promise<any> {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/collections/users/get`),
-      );
-      const users = response.data;
-      const user = users.metadatas?.find(u => u.email === email);
-      if (user && await bcrypt.compare(pass, user.password)) {
-        return { id: users.ids[users.metadatas.indexOf(user)], email, role: user.role || 'user' };
-      }
-      return null;
-    } catch (error) {
-      console.error('Validate user error:', error.response ? error.response.data : error.message);
-      throw new InternalServerErrorException(`Failed to validate user: ${error.message}`);
-    }
-  }
+  private client: chromadb.ChromaClient;
+  private collection: chromadb.Collection;
+  private logger = new Logger('AuthService');
+  private defaultEF: DefaultEmbeddingFunction;
   
-  async signup(email: string, password: string, role: string = 'user') {
+  constructor(){
+    this.client = new chromadb.ChromaClient({path: 'http://localhost:8000'});
+    this.defaultEF = new DefaultEmbeddingFunction();
+  }
+
+  async onModuleInit(){
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/collections/users/get`),
-      );
-      const users = response.data;
-      const existing = users.metadatas?.find(u => u.email === email);
-      if (existing) {
-        throw new ForbiddenException('Email already exists');
+      this.collection = await this.client.getOrCreateCollection({
+        name: 'users',
+        embeddingFunction: this.defaultEF,
+      });
+      this.logger.log('chromaDB collection initialized');
+    }catch (error){
+      this.logger.error('failed to initialized ChromaDB collection', error)
+      throw new HttpException('ChromaDB initialized failed', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  //Generated CRUD methods 
+  create(createAuthDto: CreateAuthDto) {
+    return 'This action adds a new auth';
+  }
+
+  findAll() {
+    return `This action returns all auth`;
+  }
+
+  findOne(id: number) {
+    return `This action returns a #${id} auth`;
+  }
+
+  update(id: number, updateAuthDto: UpdateAuthDto) {
+    return `This action updates a #${id} auth`;
+  }
+
+  remove(id: number) {
+    return `This action removes a #${id} auth`;
+  }
+
+  //added signup method 
+  async signup(createAuthDto: CreateAuthDto){
+    try{
+      const { email, password, role } = createAuthDto;
+      const userId = email.toLowerCase();
+
+      //check if user exists
+      const existingUser = await this.collection.get({
+      where: { email: userId },
+      });
+
+      if (existingUser.ids.length > 0) {
+        throw new HttpException('Email already exists', HttpStatus.CONFLICT);
       }
-      const id = `user_${Date.now()}`;
-      const hashedPassword = await bcrypt.hash(password, 10);
-      await firstValueFrom(
-        this.httpService.post(`${this.baseUrl}/collections/users/add`, {
-          documents: [`User ${email}`],
-          metadatas: [{ email, password: hashedPassword, role }],
-          ids: [id],
-        }),
-      );
-      return this.login({ id, email, role });
-    } catch (error) {
-      console.error('Signup error:', error.message);
-      if (error instanceof ForbiddenException) throw error;
-      throw new InternalServerErrorException(`Failed to sign up user: ${error.message}`);
+
+      //store user
+      await this.collection.add({
+        ids: [userId, `${userId}-role`],
+        documents: [JSON.stringify({ email, password, role})],
+        metadatas: [{ email: userId, role }],
+      });
+      return { message: 'User created successfully'};
+    }catch (error) {
+      this.logger.error('Signup failed', error);
+      throw error instanceof HttpException ? error : new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  async login(user: any) {
+  //added login method
+  async login(email: string, password: string) {
     try {
-      const payload = { email: user.email, sub: user.id, role: user.role };
-      return {
-        access_token: this.jwtService.sign(payload),
-      };
-    } catch (error) {
-      console.error('Token generation error:', error.message);
-      throw new InternalServerErrorException('Failed to generate token');
-    }
-  }
+      const userId = email.toLowerCase();
+      const result = await this.collection.get({
+        where: { email: userId},
+      });
 
-  async forgotPassword(email: string) {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(`${this.baseUrl}/collections/users/get`),
-      );
-      const users = response.data;
-      const user = users.metadatas?.find(u => u.email === email);
-      if (!user) {
-        throw new ForbiddenException('User not found');
+      if (result.ids.length == 0){
+        throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
       }
-      const resetToken = this.jwtService.sign(
-        { sub: users.ids[users.metadatas.indexOf(user)], email },
-        { expiresIn: '15m' },
-      );
-      console.log(`Reset token for ${email}: ${resetToken}`);
-      return { message: 'Reset token generated—check console' };
-    } catch (error) {
-      console.error('Forgot password error:', error.message);
-      if (error instanceof ForbiddenException) throw error;
-      throw new InternalServerErrorException('Failed to process password reset');
-    }
-  }
 
-  async clearUsers() {
-    try {
-      await firstValueFrom(
-        this.httpService.delete(`${this.baseUrl}/collections/users`),
-      );
-      await firstValueFrom(
-        this.httpService.post(`${this.baseUrl}/collections`, { name: 'users' }),
-      );
-      return { message: 'Users cleared' };
-    } catch (error) {
-      console.error('Clear users error:', error.message);
-      throw new InternalServerErrorException('Failed to clear users');
+      const user = JSON.parse(result.documents[0] ?? 'null');
+      if(user.password !== password ){
+        throw new HttpException('Invalid credential', HttpStatus.UNAUTHORIZED)
+      }
+
+      return { message: 'Login successful', user: { email: user.email, role: user.role}};
+    }catch (error){
+      this.logger.error('Login failed', error);
+      throw error instanceof HttpException ? error : new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 }

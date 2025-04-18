@@ -1,33 +1,34 @@
-import { Controller, Post, Body, Param, UseGuards, Request, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { CvService } from './cv.service';
-import { AuthGuard } from '@nestjs/passport';
+import { CreateCvDto } from './dto/create-cv.dto';
+import { UpdateCvDto } from './dto/update-cv.dto';
 
 @Controller('cv')
 export class CvController {
-  constructor(private cvService: CvService) {}
+  constructor(private readonly cvService: CvService) {}
 
-  @UseGuards(AuthGuard('jwt'))
   @Post()
-  async uploadCv(
-    @Body() cv: { id: string; name: string; email: string; skills: string[] },
-    @Request() req,
-  ) {
-    if (req.user.role !== 'admin') {
-      throw new ForbiddenException('Only admins can upload CVs');
-    }
-    return this.cvService.uploadCv(cv, req.user);
+  create(@Body() createCvDto: CreateCvDto) {
+    return this.cvService.create(createCvDto);
   }
 
-  @UseGuards(AuthGuard('jwt'))
-  @Post(':id/assign')
-  async assignCv(
-    @Param('id') cvId: string,
-    @Body('userId') userId: string,
-    @Request() req,
-  ) {
-    if (req.user.role !== 'admin') {
-      throw new ForbiddenException('Only admins can assign CVs');
-    }
-    return this.cvService.assignCv(cvId, userId, req.user);
+  @Get()
+  findAll() {
+    return this.cvService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.cvService.findOne(+id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateCvDto: UpdateCvDto) {
+    return this.cvService.update(+id, updateCvDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.cvService.remove(+id);
   }
 }

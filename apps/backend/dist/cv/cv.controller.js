@@ -15,45 +15,65 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CvController = void 0;
 const common_1 = require("@nestjs/common");
 const cv_service_1 = require("./cv.service");
-const passport_1 = require("@nestjs/passport");
+const create_cv_dto_1 = require("./dto/create-cv.dto");
+const update_cv_dto_1 = require("./dto/update-cv.dto");
 let CvController = class CvController {
     cvService;
     constructor(cvService) {
         this.cvService = cvService;
     }
-    async uploadCv(cv, req) {
-        if (req.user.role !== 'admin') {
-            throw new common_1.ForbiddenException('Only admins can upload CVs');
-        }
-        return this.cvService.uploadCv(cv, req.user);
+    create(createCvDto) {
+        return this.cvService.create(createCvDto);
     }
-    async assignCv(cvId, userId, req) {
-        if (req.user.role !== 'admin') {
-            throw new common_1.ForbiddenException('Only admins can assign CVs');
-        }
-        return this.cvService.assignCv(cvId, userId, req.user);
+    findAll() {
+        return this.cvService.findAll();
+    }
+    findOne(id) {
+        return this.cvService.findOne(+id);
+    }
+    update(id, updateCvDto) {
+        return this.cvService.update(+id, updateCvDto);
+    }
+    remove(id) {
+        return this.cvService.remove(+id);
     }
 };
 exports.CvController = CvController;
 __decorate([
-    (0, common_1.UseGuards)((0, passport_1.AuthGuard)('jwt')),
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
-    __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
-    __metadata("design:returntype", Promise)
-], CvController.prototype, "uploadCv", null);
+    __metadata("design:paramtypes", [create_cv_dto_1.CreateCvDto]),
+    __metadata("design:returntype", void 0)
+], CvController.prototype, "create", null);
 __decorate([
-    (0, common_1.UseGuards)((0, passport_1.AuthGuard)('jwt')),
-    (0, common_1.Post)(':id/assign'),
-    __param(0, (0, common_1.Param)('id')),
-    __param(1, (0, common_1.Body)('userId')),
-    __param(2, (0, common_1.Request)()),
+    (0, common_1.Get)(),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, Object]),
-    __metadata("design:returntype", Promise)
-], CvController.prototype, "assignCv", null);
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], CvController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Get)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CvController.prototype, "findOne", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_cv_dto_1.UpdateCvDto]),
+    __metadata("design:returntype", void 0)
+], CvController.prototype, "update", null);
+__decorate([
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CvController.prototype, "remove", null);
 exports.CvController = CvController = __decorate([
     (0, common_1.Controller)('cv'),
     __metadata("design:paramtypes", [cv_service_1.CvService])

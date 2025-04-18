@@ -1,32 +1,32 @@
-services:
-  backend:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
-    ports:
-      - "3003:3003"
-    env_file:
-      - .env
-    container_name: ai_cv-backend-1
-    depends_on:
-      chromadb:
-        condition: service_healthy
+# services:
+#   backend:
+#     build:
+#       context: ./apps/backend
+#       dockerfile: Dockerfile
+#     ports:
+#       - "3003:3003"
+#     env_file:
+#       - .env
+#     container_name: ai_cv-backend-1
+#     depends_on:
+#       chromadb:
+#         condition: service_healthy
 
-  chromadb:
-    image: ghcr.io/chroma-core/chroma:0.5.5
-    container_name: chromadb
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - chromadb-data:/chromadb
-    healthcheck:
-      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v2/heartbeat"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+#   chromadb:
+#     image: ghcr.io/chroma-core/chroma:0.5.5
+#     container_name: chromadb
+#     ports:
+#       - "8000:8000"
+#     env_file:
+#       - .env
+#     volumes:
+#       - chromadb-data:/chromadb
+#     healthcheck:
+#       test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v2/heartbeat"]
+#       interval: 10s
+#       timeout: 10s
+#       retries: 5
+#       start_period: 30s
 
-volumes:
-  chromadb-data:
+# volumes:
+#   chromadb-data:
