@@ -1,0 +1,10 @@
+packages:
+  - apps/backend
+  - libs/*
+
+ignoredBuiltDependencies:
+  - protobufjs
+  - sharp
+
+onlyBuiltDependencies:
+  - sharp

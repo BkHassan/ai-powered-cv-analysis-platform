@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1
+
+# Builder Stage
+FROM node:18-alpine AS builder
+RUN mkdir -p
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
+COPY tsconfig.json ./
+COPY src ./src
+RUN pnpm run build
+
+# Production Stage
+FROM node:18-bullseye
+ENV NODE_ENV=production
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup --system app && adduser --system --ingroup app app
+
+# Install system dependencies required by onnxruntime-node & chromadb
+RUN apt-get update && apt-get install -y \
+  libc6 \
+  libstdc++6 \
+  libgomp1 \
+  wget \
+  curl \
+  libssl-dev \
+  libatomic1 \
+  libprotobuf-dev \
+  libprotoc-dev \
+  liblzma-dev \
+  libzstd-dev \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install only production dependencies
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile
+
+# Copy compiled code
+COPY --from=builder /app/dist ./dist
+
+# Fix permissions & switch user
+RUN chown -R app:app /app
+USER app
+
+# Expose and healthcheck
+EXPOSE 3003
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD wget --quiet --tries=1 --spider http://localhost:3003 || exit 1
+
+# Start the app
+CMD ["node", "dist/main.js"]

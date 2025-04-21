@@ -1,25 +1,14 @@
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { JwtService } from '@nestjs/jwt';
+import { ChromaService } from './chroma.service';
+import { CreateAuthDto, LoginAuthDto } from './dto/create-auth.dto';
 export declare class AuthService {
-    private client;
-    private collection;
-    private logger;
-    private defaultEF;
-    constructor();
-    onModuleInit(): Promise<void>;
-    create(createAuthDto: CreateAuthDto): string;
-    findAll(): string;
-    findOne(id: number): string;
-    update(id: number, updateAuthDto: UpdateAuthDto): string;
-    remove(id: number): string;
+    private chromaService;
+    private jwtService;
+    constructor(chromaService: ChromaService, jwtService: JwtService);
     signup(createAuthDto: CreateAuthDto): Promise<{
-        message: string;
+        access_token: string;
     }>;
-    login(email: string, password: string): Promise<{
-        message: string;
-        user: {
-            email: any;
-            role: any;
-        };
+    login(loginAuthDto: LoginAuthDto): Promise<{
+        access_token: string;
     }>;
 }

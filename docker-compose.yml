@@ -1,32 +1,48 @@
-# services:
-#   backend:
-#     build:
-#       context: ./apps/backend
-#       dockerfile: Dockerfile
-#     ports:
-#       - "3003:3003"
-#     env_file:
-#       - .env
-#     container_name: ai_cv-backend-1
-#     depends_on:
-#       chromadb:
-#         condition: service_healthy
+services:
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - JWT_SECRET=my_jwt_secret
+      - CHROMADB_URL=http://chromadb:8000
+      - CHROMADB_AUTH_TOKEN=
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    networks:
+      - back-tier
+    command: pnpm start:dev
 
-#   chromadb:
-#     image: ghcr.io/chroma-core/chroma:0.5.5
-#     container_name: chromadb
-#     ports:
-#       - "8000:8000"
-#     env_file:
-#       - .env
-#     volumes:
-#       - chromadb-data:/chromadb
-#     healthcheck:
-#       test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v2/heartbeat"]
-#       interval: 10s
-#       timeout: 10s
-#       retries: 5
-#       start_period: 30s
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chromadb-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    healthcheck:
+      test: [ "CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000" ]
+      interval: 30s
+      timeout: 15s
+      retries: 50
+      start_period: 300s
+    networks:
+      - back-tier
 
-# volumes:
-#   chromadb-data:
+volumes:
+  chromadb_data:
+    driver: local
+
+networks:
+  back-tier:
+    driver: bridge

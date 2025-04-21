@@ -1,5 +1,9 @@
 export declare class CreateAuthDto {
     email: string;
     password: string;
-    role: 'admin' | 'user';
+    role?: string;
+}
+export declare class LoginAuthDto {
+    email: string;
+    password: string;
 }
