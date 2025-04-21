@@ -1,58 +1,56 @@
-chromadb-data/
+# Python virtual environment
 .venv/
-# compiled output
-/dist
-/node_modules
-/build
+venv/
 
-# Logs
-logs
+# Node.js and PNPM
+node_modules/
+.pnpm-store/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Docker
+chromadb-data/
 *.log
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
+docker-compose.yml.bak
+Dockerfile*.bak
 
-# OS
+# Build artifacts
+dist/
+build/
+out/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
 .DS_Store
+Thumbs.db
 
-# Tests
-/coverage
-/.nyc_output
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
 *.sublime-workspace
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+# Testing and coverage
+coverage/
+.nyc_output/
 
-# temp directory
-.temp
-.tmp
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Diagnostic reports (https://nodejs.org/api/report.html)
-report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+# Miscellaneous
+tmp/
+temp/
