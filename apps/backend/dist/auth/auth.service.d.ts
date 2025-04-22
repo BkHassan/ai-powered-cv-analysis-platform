@@ -1,14 +1,19 @@
+import { ChromaClient } from 'chromadb';
 import { JwtService } from '@nestjs/jwt';
-import { ChromaService } from './chroma.service';
-import { CreateAuthDto, LoginAuthDto } from './dto/create-auth.dto';
+import { SignupDto } from './dto/signup.dto';
+import { LoginDto } from './dto/login.dto';
 export declare class AuthService {
-    private chromaService;
-    private jwtService;
-    constructor(chromaService: ChromaService, jwtService: JwtService);
-    signup(createAuthDto: CreateAuthDto): Promise<{
-        access_token: string;
+    private readonly jwtService;
+    private readonly chromaClient;
+    private collection;
+    private readonly logger;
+    private readonly embeddingFunction;
+    constructor(jwtService: JwtService, chromaClient: ChromaClient);
+    private initializeCollection;
+    signup(signupDto: SignupDto): Promise<{
+        accessToken: string;
     }>;
-    login(loginAuthDto: LoginAuthDto): Promise<{
-        access_token: string;
+    login(loginDto: LoginDto): Promise<{
+        accessToken: string;
     }>;
 }

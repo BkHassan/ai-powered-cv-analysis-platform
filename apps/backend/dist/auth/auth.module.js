@@ -10,29 +10,29 @@ exports.AuthModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_service_1 = require("./auth.service");
 const auth_controller_1 = require("./auth.controller");
-const chroma_service_1 = require("./chroma.service");
 const jwt_1 = require("@nestjs/jwt");
-const passport_1 = require("@nestjs/passport");
 const jwt_strategy_1 = require("./jwt.strategy");
-const config_1 = require("@nestjs/config");
+const chromadb_1 = require("chromadb");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
 exports.AuthModule = AuthModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            passport_1.PassportModule.register({ defaultStrategy: 'jwt' }),
-            jwt_1.JwtModule.registerAsync({
-                useFactory: async (configService) => ({
-                    secret: configService.get('JWT_SECRET', 'default_jwt_secret'),
-                    signOptions: { expiresIn: '60m' },
-                }),
-                inject: [config_1.ConfigService],
+            jwt_1.JwtModule.register({
+                secret: 'your_jwt_secret_key',
+                signOptions: { expiresIn: '1h' },
             }),
         ],
-        providers: [auth_service_1.AuthService, chroma_service_1.ChromaService, jwt_strategy_1.JwtStrategy],
+        providers: [
+            auth_service_1.AuthService,
+            jwt_strategy_1.JwtStrategy,
+            {
+                provide: chromadb_1.ChromaClient,
+                useFactory: () => new chromadb_1.ChromaClient({ path: 'http://chromadb:8000' }),
+            },
+        ],
         controllers: [auth_controller_1.AuthController],
-        exports: [jwt_strategy_1.JwtStrategy, passport_1.PassportModule],
     })
 ], AuthModule);
 //# sourceMappingURL=auth.module.js.map

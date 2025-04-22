@@ -1,41 +1,99 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, Logger } from '@nestjs/common';
+import { ChromaClient, Collection, DefaultEmbeddingFunction } from 'chromadb';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
-import { ChromaService } from './chroma.service';
-import { CreateAuthDto, LoginAuthDto } from './dto/create-auth.dto';
+import { SignupDto } from './dto/signup.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private chromaService: ChromaService,
-    private jwtService: JwtService,
-  ) {}
+  private collection: Collection;
+  private readonly logger = new Logger(AuthService.name);
+  private readonly embeddingFunction = new DefaultEmbeddingFunction();
 
-  async signup(createAuthDto: CreateAuthDto) {
-    const { email, password, role = 'user' } = createAuthDto;
-    const existingUser = await this.chromaService.findUserByEmail(email);
-    if (existingUser) {
-      throw new Error('User already exists');
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = { id: uuidv4(), email, password: hashedPassword, role };
-    await this.chromaService.createUser(user);
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    return { access_token: this.jwtService.sign(payload) };
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly chromaClient: ChromaClient,
+  ) {
+    this.chromaClient = new ChromaClient({ path: 'http://chromadb:8000' });
+    this.initializeCollection();
   }
 
-  async login(loginAuthDto: LoginAuthDto) {
-    const { email, password } = loginAuthDto;
-    const user = await this.chromaService.findUserByEmail(email);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+  private async initializeCollection() {
+    try {
+      this.collection = await this.chromaClient.getOrCreateCollection({
+        name: 'users',
+        embeddingFunction: this.embeddingFunction,
+      });
+      this.logger.log('ChromaDB collection initialized successfully');
+    } catch (error) {
+      this.logger.error('Failed to initialize ChromaDB collection', error);
+      throw new Error('ChromaDB initialization failed');
     }
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+  }
+
+  async signup(signupDto: SignupDto): Promise<{ accessToken: string }> {
+    const {name, email, password, role } = signupDto;
+
+    try {
+      // Check if user already exists
+      const existingUser = await this.collection.get({
+        where: { email },
+      });
+      if (existingUser.ids.length > 0) {
+        throw new ConflictException('Email already exists');
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Store user in ChromaDB
+      const  userId= `user_${Date.now()}`;
+      await this.collection.add({
+        ids: [userId],
+        documents: [JSON.stringify({ email, name, role, password: hashedPassword, cv_id: [] })],
+        metadatas: [{ email }],
+      });
+
+      // Generate JWT
+      const payload = { sub: userId, email, role };
+      const accessToken = this.jwtService.sign(payload);
+
+      return { accessToken };
+    } catch (error) {
+      this.logger.error('Signup failed', error);
+      throw error;
     }
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    return { access_token: this.jwtService.sign(payload) };
+  }
+
+  async login(loginDto: LoginDto): Promise<{ accessToken: string }> {
+    const { email, password } = loginDto;
+
+    try {
+      // Find user
+      const result = await this.collection.get({
+        where: { email },
+      });
+
+      if (result.ids.length === 0) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      const userDoc = JSON.parse(result.documents[0]!);
+      const isPasswordValid = await bcrypt.compare(password, userDoc.password);
+
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      // Generate JWT
+      const payload = { sub: result.ids[0], email, role: userDoc.role };
+      const accessToken = this.jwtService.sign(payload);
+
+      return { accessToken };
+    } catch (error) {
+      this.logger.error('Login failed', error);
+      throw error;
+    }
   }
 }

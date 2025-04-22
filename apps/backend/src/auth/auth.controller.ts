@@ -1,18 +1,21 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateAuthDto, LoginAuthDto } from './dto/create-auth.dto';
+import { SignupDto } from './dto/signup.dto';
+import { LoginDto } from './dto/login.dto';
+import { ChromaClient } from 'chromadb';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
-  async signup(@Body() createAuthDto: CreateAuthDto) {
-    return this.authService.signup(createAuthDto);
+  async signup(@Body() signupDto: SignupDto) {
+    return this.authService.signup(signupDto);
   }
 
   @Post('login')
-  async login(@Body() loginAuthDto: LoginAuthDto) {
-    return this.authService.login(loginAuthDto);
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto);
   }
 }

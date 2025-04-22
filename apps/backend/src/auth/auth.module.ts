@@ -1,25 +1,26 @@
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { ChromaService } from './chroma.service';
 import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
-import { ConfigService } from '@nestjs/config';
+import { ChromaClient } from 'chromadb';
+
 
 @Module({
   imports: [
-    PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'default_jwt_secret'),
-        signOptions: { expiresIn: '60m' },
-      }),
-      inject: [ConfigService],
+    JwtModule.register({
+      secret: 'your_jwt_secret_key',
+      signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [AuthService, ChromaService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    {
+      provide: ChromaClient,
+      useFactory: () => new ChromaClient({ path: 'http://chromadb:8000' }),
+    },
+  ],
   controllers: [AuthController],
-  exports: [JwtStrategy, PassportModule],
 })
 export class AuthModule {}

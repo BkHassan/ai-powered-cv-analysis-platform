@@ -8,50 +8,91 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
+const chromadb_1 = require("chromadb");
 const jwt_1 = require("@nestjs/jwt");
 const bcrypt = require("bcryptjs");
-const uuid_1 = require("uuid");
-const chroma_service_1 = require("./chroma.service");
-let AuthService = class AuthService {
-    chromaService;
+let AuthService = AuthService_1 = class AuthService {
     jwtService;
-    constructor(chromaService, jwtService) {
-        this.chromaService = chromaService;
+    chromaClient;
+    collection;
+    logger = new common_1.Logger(AuthService_1.name);
+    embeddingFunction = new chromadb_1.DefaultEmbeddingFunction();
+    constructor(jwtService, chromaClient) {
         this.jwtService = jwtService;
+        this.chromaClient = chromaClient;
+        this.chromaClient = new chromadb_1.ChromaClient({ path: 'http://chromadb:8000' });
+        this.initializeCollection();
     }
-    async signup(createAuthDto) {
-        const { email, password, role = 'user' } = createAuthDto;
-        const existingUser = await this.chromaService.findUserByEmail(email);
-        if (existingUser) {
-            throw new Error('User already exists');
+    async initializeCollection() {
+        try {
+            this.collection = await this.chromaClient.getOrCreateCollection({
+                name: 'users',
+                embeddingFunction: this.embeddingFunction,
+            });
+            this.logger.log('ChromaDB collection initialized successfully');
         }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = { id: (0, uuid_1.v4)(), email, password: hashedPassword, role };
-        await this.chromaService.createUser(user);
-        const payload = { sub: user.id, email: user.email, role: user.role };
-        return { access_token: this.jwtService.sign(payload) };
+        catch (error) {
+            this.logger.error('Failed to initialize ChromaDB collection', error);
+            throw new Error('ChromaDB initialization failed');
+        }
     }
-    async login(loginAuthDto) {
-        const { email, password } = loginAuthDto;
-        const user = await this.chromaService.findUserByEmail(email);
-        if (!user) {
-            throw new common_1.UnauthorizedException('Invalid credentials');
+    async signup(signupDto) {
+        const { name, email, password, role } = signupDto;
+        try {
+            const existingUser = await this.collection.get({
+                where: { email },
+            });
+            if (existingUser.ids.length > 0) {
+                throw new common_1.ConflictException('Email already exists');
+            }
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const userId = `user_${Date.now()}`;
+            await this.collection.add({
+                ids: [userId],
+                documents: [JSON.stringify({ email, name, role, password: hashedPassword, cv_id: [] })],
+                metadatas: [{ email }],
+            });
+            const payload = { sub: userId, email, role };
+            const accessToken = this.jwtService.sign(payload);
+            return { accessToken };
         }
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            throw new common_1.UnauthorizedException('Invalid credentials');
+        catch (error) {
+            this.logger.error('Signup failed', error);
+            throw error;
         }
-        const payload = { sub: user.id, email: user.email, role: user.role };
-        return { access_token: this.jwtService.sign(payload) };
+    }
+    async login(loginDto) {
+        const { email, password } = loginDto;
+        try {
+            const result = await this.collection.get({
+                where: { email },
+            });
+            if (result.ids.length === 0) {
+                throw new common_1.UnauthorizedException('Invalid credentials');
+            }
+            const userDoc = JSON.parse(result.documents[0]);
+            const isPasswordValid = await bcrypt.compare(password, userDoc.password);
+            if (!isPasswordValid) {
+                throw new common_1.UnauthorizedException('Invalid credentials');
+            }
+            const payload = { sub: result.ids[0], email, role: userDoc.role };
+            const accessToken = this.jwtService.sign(payload);
+            return { accessToken };
+        }
+        catch (error) {
+            this.logger.error('Login failed', error);
+            throw error;
+        }
     }
 };
 exports.AuthService = AuthService;
-exports.AuthService = AuthService = __decorate([
+exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [chroma_service_1.ChromaService,
-        jwt_1.JwtService])
+    __metadata("design:paramtypes", [jwt_1.JwtService,
+        chromadb_1.ChromaClient])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

@@ -5,15 +5,20 @@ WORKDIR /app
 # Install PNPM
 RUN npm install -g pnpm
 
-# Install build tools required by sharp (if needed)
-RUN apt-get update && apt-get install -y \
+# sharp
+RUN npm install -g pnpm
+RUN apt-get update && apt-get install -y libvips-dev \
     build-essential \
-    python3 \
+    libvips-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libwebp-dev \
     && rm -rf /var/lib/apt/lists/*
-    
+
+RUN pnpm add sharp
 # Copy package files and install dependencies
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install
+RUN pnpm install --force
 
 # Copy source code and config
 COPY tsconfig.json ./
