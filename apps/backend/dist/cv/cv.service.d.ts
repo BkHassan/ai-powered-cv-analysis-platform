@@ -15,4 +15,6 @@ export declare class CvService {
     }>;
     assignCv(cvId: string, assignCvDto: AssignCvDto, requesterRole: string): Promise<void>;
     getCv(cvId: string, requesterEmail: string, requesterRole: string): Promise<any>;
+    debugCvs(): Promise<any>;
+    healthCheck(): Promise<any>;
 }

@@ -9,4 +9,6 @@ export declare class CvController {
     }>;
     assignCv(cvId: string, assignCvDto: AssignCvDto, req: any): Promise<void>;
     getCv(cvId: string, req: any): Promise<any>;
+    debugCvs(req: any): Promise<any>;
+    healthCheck(req: any): Promise<any>;
 }
