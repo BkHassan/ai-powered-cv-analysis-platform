@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException, NotFoundException, ConflictExce
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 import { UploadCvDto } from './dto/upload-cv';
 import { AssignCvDto } from './dto/assign-cv';
+import { ChatCvDto } from './dto/chat-cv.dto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ConfigService } from '@nestjs/config';
 
@@ -196,14 +197,58 @@ export class CvService {
     }
   }
 
-  async debugCvs(): Promise<any> {
+  // list all cv for admin only
+  async listCvs(requesterRole: string): Promise<any[]> {
+    if (requesterRole !== 'admin') {
+      this.logger.warn(`Unauthorized attempt to list CVs by non-admin`);
+      throw new ForbiddenException('Only admins can list all CVs');
+    }
+
     try {
       const result = await this.cvCollection.get();
-      this.logger.log(`Debug CVs: ${JSON.stringify(result)}`);
-      return result;
+      this.logger.log(`Retrieved ${result.ids.length} CVs`);
+      return result.documents.map((doc, index) => ({
+        cvId: result.ids[index],
+        ...JSON.parse(doc!),
+      }));
     } catch (error) {
-      this.logger.error('Debug CVs failed', error.stack, error.message);
+      this.logger.error('List CVs failed', error.stack, error.message);
       throw error;
     }
   }
+
+  // basic chat
+  async chatCv(cvId: string, chatCvDto: ChatCvDto, requesterEmail: string, requesterRole: string): Promise<{ response: string }> {
+    try {
+      this.logger.log(`Chat request for CV ${cvId} by ${requesterEmail} with role ${requesterRole}`);
+      const result = await this.cvCollection.get({ ids: [cvId] });
+      if (result.ids.length === 0 || !result.documents[0]) {
+        this.logger.warn(`CV ${cvId} not found`);
+        throw new NotFoundException('CV not found');
+      }
+
+      const cvDoc = JSON.parse(result.documents[0]);
+      this.logger.debug(`CV document: ${JSON.stringify(cvDoc)}`);
+
+      if (requesterRole !== 'admin') {
+        if (!cvDoc.assignedUserEmail || cvDoc.assignedUserEmail !== requesterEmail) {
+          this.logger.warn(`Unauthorized chat attempt by ${requesterEmail} for CV ${cvId}`);
+          throw new ForbiddenException('You are not authorized to chat with this CV');
+        }
+      }
+
+      const { message } = chatCvDto;
+      this.logger.log(`Received message: ${message}`);
+
+      // Mock response (replace with OpenAI integration in Phase 2)
+      const response = `Mock response to "${message}" for CV ${cvId}. Skills: ${cvDoc.skills.join(', ')}.`;
+      this.logger.log(`Chat response: ${response}`);
+
+      return { response };
+    } catch (error) {
+      this.logger.error('Chat CV failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
 }
