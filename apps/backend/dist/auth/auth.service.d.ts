@@ -4,14 +4,16 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password';
 import { ResetPasswordDto } from './dto/reset-password';
+import { ConfigService } from '@nestjs/config';
 export declare class AuthService {
     private readonly jwtService;
     private readonly chromaClient;
+    private readonly configService;
     private userCollection;
     private resetTokenCollection;
     private readonly logger;
     private readonly embeddingFunction;
-    constructor(jwtService: JwtService, chromaClient: ChromaClient);
+    constructor(jwtService: JwtService, chromaClient: ChromaClient, configService: ConfigService);
     private initializeCollections;
     signup(signupDto: SignupDto): Promise<{
         accessToken: string;

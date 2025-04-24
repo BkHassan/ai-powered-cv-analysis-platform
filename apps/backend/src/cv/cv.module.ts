@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CvService } from './cv.service';
 import { CvController } from './cv.controller';
 import { ChromaClient } from 'chromadb';
+import { ConfigService } from '@nestjs/config';
 
 @Module({
   controllers: [CvController],
@@ -9,7 +10,9 @@ import { ChromaClient } from 'chromadb';
     CvService,
     {
       provide: ChromaClient,
-      useFactory: () => new ChromaClient({ path: 'http://chromadb:8000' }),
+      useFactory: (configService: ConfigService) => 
+        new ChromaClient({ path: configService.get<string>('CHROMADB_URL') }),
+      inject: [ConfigService],
     },
   ],
 })

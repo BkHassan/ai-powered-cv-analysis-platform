@@ -14,11 +14,16 @@ exports.CvService = void 0;
 const common_1 = require("@nestjs/common");
 const chromadb_1 = require("chromadb");
 const generative_ai_1 = require("@google/generative-ai");
+const config_1 = require("@nestjs/config");
 class GeminiEmbeddingFunction {
     logger = new common_1.Logger(GeminiEmbeddingFunction.name);
     client;
-    constructor() {
-        const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs';
+    constructor(configService) {
+        const GEMINI_API_KEY = configService.get('GEMINI_API_KEY');
+        if (!GEMINI_API_KEY) {
+            this.logger.error('GEMINI_API_KEY is not defined in .env');
+            throw new Error('GEMINI_API_KEY is required');
+        }
         this.client = new generative_ai_1.GoogleGenerativeAI(GEMINI_API_KEY);
         this.logger.log('Gemini client initialized successfully');
     }
@@ -42,12 +47,15 @@ class GeminiEmbeddingFunction {
 }
 let CvService = CvService_1 = class CvService {
     chromaClient;
+    configService;
     cvCollection;
     userCollection;
     logger = new common_1.Logger(CvService_1.name);
-    embeddingFunction = new GeminiEmbeddingFunction();
-    constructor(chromaClient) {
+    embeddingFunction;
+    constructor(chromaClient, configService) {
         this.chromaClient = chromaClient;
+        this.configService = configService;
+        this.embeddingFunction = new GeminiEmbeddingFunction(configService);
         this.initializeCollections();
     }
     async initializeCollections() {
@@ -191,21 +199,11 @@ let CvService = CvService_1 = class CvService {
             throw error;
         }
     }
-    async healthCheck() {
-        try {
-            const heartbeat = await this.chromaClient.heartbeat();
-            this.logger.log(`ChromaDB heartbeat: ${JSON.stringify(heartbeat)}`);
-            return { status: 'ok', chromadb: heartbeat };
-        }
-        catch (error) {
-            this.logger.error('Health check failed', error.stack, error.message);
-            throw error;
-        }
-    }
 };
 exports.CvService = CvService;
 exports.CvService = CvService = CvService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [chromadb_1.ChromaClient])
+    __metadata("design:paramtypes", [chromadb_1.ChromaClient,
+        config_1.ConfigService])
 ], CvService);
 //# sourceMappingURL=cv.service.js.map
