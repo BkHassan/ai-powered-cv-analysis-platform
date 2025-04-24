@@ -1,6 +1,7 @@
 import { ChromaClient } from 'chromadb';
 import { UploadCvDto } from './dto/upload-cv';
 import { AssignCvDto } from './dto/assign-cv';
+import { ChatCvDto } from './dto/chat-cv.dto';
 import { ConfigService } from '@nestjs/config';
 export declare class CvService {
     private readonly chromaClient;
@@ -17,5 +18,8 @@ export declare class CvService {
     }>;
     assignCv(cvId: string, assignCvDto: AssignCvDto, requesterRole: string): Promise<void>;
     getCv(cvId: string, requesterEmail: string, requesterRole: string): Promise<any>;
-    debugCvs(): Promise<any>;
+    listCvs(requesterRole: string): Promise<any[]>;
+    chatCv(cvId: string, chatCvDto: ChatCvDto, requesterEmail: string, requesterRole: string): Promise<{
+        response: string;
+    }>;
 }

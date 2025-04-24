@@ -188,14 +188,48 @@ let CvService = CvService_1 = class CvService {
             throw error;
         }
     }
-    async debugCvs() {
+    async listCvs(requesterRole) {
+        if (requesterRole !== 'admin') {
+            this.logger.warn(`Unauthorized attempt to list CVs by non-admin`);
+            throw new common_1.ForbiddenException('Only admins can list all CVs');
+        }
         try {
             const result = await this.cvCollection.get();
-            this.logger.log(`Debug CVs: ${JSON.stringify(result)}`);
-            return result;
+            this.logger.log(`Retrieved ${result.ids.length} CVs`);
+            return result.documents.map((doc, index) => ({
+                cvId: result.ids[index],
+                ...JSON.parse(doc),
+            }));
         }
         catch (error) {
-            this.logger.error('Debug CVs failed', error.stack, error.message);
+            this.logger.error('List CVs failed', error.stack, error.message);
+            throw error;
+        }
+    }
+    async chatCv(cvId, chatCvDto, requesterEmail, requesterRole) {
+        try {
+            this.logger.log(`Chat request for CV ${cvId} by ${requesterEmail} with role ${requesterRole}`);
+            const result = await this.cvCollection.get({ ids: [cvId] });
+            if (result.ids.length === 0 || !result.documents[0]) {
+                this.logger.warn(`CV ${cvId} not found`);
+                throw new common_1.NotFoundException('CV not found');
+            }
+            const cvDoc = JSON.parse(result.documents[0]);
+            this.logger.debug(`CV document: ${JSON.stringify(cvDoc)}`);
+            if (requesterRole !== 'admin') {
+                if (!cvDoc.assignedUserEmail || cvDoc.assignedUserEmail !== requesterEmail) {
+                    this.logger.warn(`Unauthorized chat attempt by ${requesterEmail} for CV ${cvId}`);
+                    throw new common_1.ForbiddenException('You are not authorized to chat with this CV');
+                }
+            }
+            const { message } = chatCvDto;
+            this.logger.log(`Received message: ${message}`);
+            const response = `Mock response to "${message}" for CV ${cvId}. Skills: ${cvDoc.skills.join(', ')}.`;
+            this.logger.log(`Chat response: ${response}`);
+            return { response };
+        }
+        catch (error) {
+            this.logger.error('Chat CV failed', error.stack, error.message);
             throw error;
         }
     }
