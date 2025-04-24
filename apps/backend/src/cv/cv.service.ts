@@ -1,17 +1,18 @@
 import { Injectable, Logger, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { UploadCvDto } from './dto/upload-cv';
 import { AssignCvDto } from './dto/assign-cv';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Custom embedding function using Gemini API
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
   private readonly client: GoogleGenerativeAI;
 
-  constructor(apiKey: string) {
-    this.client = new GoogleGenerativeAI(apiKey);
-    this.logger.log('Gemini client initialized');
+  constructor() {
+    const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs'; // Replace with your Gemini API key
+    this.client = new GoogleGenerativeAI(GEMINI_API_KEY);
+    this.logger.log('Gemini client initialized successfully');
   }
 
   async generate(texts: string[]): Promise<number[][]> {
@@ -19,22 +20,15 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
       const model = this.client.getGenerativeModel({ model: 'text-embedding-004' });
       const embeddings: number[][] = [];
       for (const text of texts) {
-        if (!text || text.trim() === '') {
-          this.logger.warn('Empty text provided, using dummy embedding');
-          embeddings.push(Array(768).fill(0)); // Fallback for MVP
-          continue;
-        }
         const result = await model.embedContent(text);
         const embedding = result.embedding.values;
-        this.logger.debug(`Generated embedding for text: ${text.slice(0, 50)}... (length: ${embedding.length})`);
         embeddings.push(embedding);
       }
       this.logger.log(`Generated embeddings for ${texts.length} texts`);
       return embeddings;
     } catch (error) {
       this.logger.error('Failed to generate embeddings', error.stack, error.message);
-      this.logger.warn('Using dummy embeddings as fallback');
-      return texts.map(() => Array(768).fill(0)); // Fallback for MVP
+      throw new Error('Gemini embedding generation failed');
     }
   }
 }
@@ -44,11 +38,9 @@ export class CvService {
   private cvCollection: Collection;
   private userCollection: Collection;
   private readonly logger = new Logger(CvService.name);
-  private readonly embeddingFunction: IEmbeddingFunction;
+  private readonly embeddingFunction = new GeminiEmbeddingFunction();
 
   constructor(private readonly chromaClient: ChromaClient) {
-    const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs'; // Replace with your Gemini API key
-    this.embeddingFunction = new GeminiEmbeddingFunction(GEMINI_API_KEY);
     this.initializeCollections();
   }
 
@@ -103,15 +95,17 @@ export class CvService {
         documents: [cvDocument],
         metadatas: [{ email }],
       });
+      await new Promise(resolve => setTimeout(resolve, 100)); // Ensure SQLite write
       this.logger.log(`CV uploaded: ${cvId}`);
 
       // Verify persistence
       const verify = await this.cvCollection.get({ ids: [cvId] });
-      if (verify.ids.length === 0) {
+      this.logger.debug(`Verify result: ${JSON.stringify(verify)}`);
+      if (verify.ids.length === 0 || !verify.documents[0]) {
         this.logger.error(`CV ${cvId} not found after upload`);
         throw new Error('CV upload failed to persist');
       }
-      this.logger.debug(`Verified CV ${cvId} in ChromaDB: ${JSON.stringify(verify.ids)}`);
+      this.logger.log(`Verified CV ${cvId} in ChromaDB`);
 
       return { cvId };
     } catch (error) {
