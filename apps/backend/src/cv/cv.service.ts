@@ -3,14 +3,18 @@ import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 import { UploadCvDto } from './dto/upload-cv';
 import { AssignCvDto } from './dto/assign-cv';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ConfigService } from '@nestjs/config';
 
-// Custom embedding function using Gemini API
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
   private readonly client: GoogleGenerativeAI;
 
-  constructor() {
-    const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs'; // Replace with your Gemini API key
+  constructor(configService: ConfigService) {
+    const GEMINI_API_KEY = configService.get<string>('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      this.logger.error('GEMINI_API_KEY is not defined in .env');
+      throw new Error('GEMINI_API_KEY is required');
+    }
     this.client = new GoogleGenerativeAI(GEMINI_API_KEY);
     this.logger.log('Gemini client initialized successfully');
   }
@@ -38,9 +42,13 @@ export class CvService {
   private cvCollection: Collection;
   private userCollection: Collection;
   private readonly logger = new Logger(CvService.name);
-  private readonly embeddingFunction = new GeminiEmbeddingFunction();
+  private readonly embeddingFunction: IEmbeddingFunction;
 
-  constructor(private readonly chromaClient: ChromaClient) {
+  constructor(
+    private readonly chromaClient: ChromaClient,
+    private readonly configService: ConfigService,
+  ) {
+    this.embeddingFunction = new GeminiEmbeddingFunction(configService);
     this.initializeCollections();
   }
 
@@ -184,6 +192,17 @@ export class CvService {
       return cvDoc;
     } catch (error) {
       this.logger.error('CV retrieval failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
+  async debugCvs(): Promise<any> {
+    try {
+      const result = await this.cvCollection.get();
+      this.logger.log(`Debug CVs: ${JSON.stringify(result)}`);
+      return result;
+    } catch (error) {
+      this.logger.error('Debug CVs failed', error.stack, error.message);
       throw error;
     }
   }

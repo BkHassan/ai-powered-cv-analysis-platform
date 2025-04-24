@@ -13,15 +13,19 @@ const auth_controller_1 = require("./auth.controller");
 const jwt_1 = require("@nestjs/jwt");
 const jwt_strategy_1 = require("./jwt.strategy");
 const chromadb_1 = require("chromadb");
+const config_1 = require("@nestjs/config");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
 exports.AuthModule = AuthModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            jwt_1.JwtModule.register({
-                secret: 'your_jwt_secret_key',
-                signOptions: { expiresIn: '1h' },
+            jwt_1.JwtModule.registerAsync({
+                useFactory: (configService) => ({
+                    secret: configService.get('JWT_SECRET'),
+                    signOptions: { expiresIn: '1h' },
+                }),
+                inject: [config_1.ConfigService],
             }),
         ],
         providers: [
@@ -29,7 +33,8 @@ exports.AuthModule = AuthModule = __decorate([
             jwt_strategy_1.JwtStrategy,
             {
                 provide: chromadb_1.ChromaClient,
-                useFactory: () => new chromadb_1.ChromaClient({ path: 'http://chromadb:8000' }),
+                useFactory: (configService) => new chromadb_1.ChromaClient({ path: configService.get('CHROMADB_URL') }),
+                inject: [config_1.ConfigService],
             },
         ],
         controllers: [auth_controller_1.AuthController],

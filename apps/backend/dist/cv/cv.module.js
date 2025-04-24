@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const cv_service_1 = require("./cv.service");
 const cv_controller_1 = require("./cv.controller");
 const chromadb_1 = require("chromadb");
+const config_1 = require("@nestjs/config");
 let CvModule = class CvModule {
 };
 exports.CvModule = CvModule;
@@ -21,7 +22,8 @@ exports.CvModule = CvModule = __decorate([
             cv_service_1.CvService,
             {
                 provide: chromadb_1.ChromaClient,
-                useFactory: () => new chromadb_1.ChromaClient({ path: 'http://chromadb:8000' }),
+                useFactory: (configService) => new chromadb_1.ChromaClient({ path: configService.get('CHROMADB_URL') }),
+                inject: [config_1.ConfigService],
             },
         ],
     })

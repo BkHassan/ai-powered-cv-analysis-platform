@@ -32,18 +32,6 @@ let CvController = class CvController {
     async getCv(cvId, req) {
         return this.cvService.getCv(cvId, req.user.email, req.user.role);
     }
-    async debugCvs(req) {
-        if (req.user.role !== 'admin') {
-            throw new common_1.ForbiddenException('Only admins can debug CVs');
-        }
-        return this.cvService.debugCvs();
-    }
-    async healthCheck(req) {
-        if (req.user.role !== 'admin') {
-            throw new common_1.ForbiddenException('Only admins can check health');
-        }
-        return this.cvService.healthCheck();
-    }
 };
 exports.CvController = CvController;
 __decorate([
@@ -71,20 +59,6 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], CvController.prototype, "getCv", null);
-__decorate([
-    (0, common_1.Get)('debug-cvs'),
-    __param(0, (0, common_1.Request)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], CvController.prototype, "debugCvs", null);
-__decorate([
-    (0, common_1.Get)('health'),
-    __param(0, (0, common_1.Request)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], CvController.prototype, "healthCheck", null);
 exports.CvController = CvController = __decorate([
     (0, common_1.Controller)('cv'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

@@ -8,14 +8,18 @@ import { ForgotPasswordDto } from './dto/forgot-password';
 import { ResetPasswordDto } from './dto/reset-password';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v4 as uuidv4 } from 'uuid';
+import { ConfigService } from '@nestjs/config';
 
-// Custom embedding function using Gemini API
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
   private readonly client: GoogleGenerativeAI;
 
-  constructor() {
-    const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs'; // Replace with your Gemini API key
+  constructor(configService: ConfigService) {
+    const GEMINI_API_KEY = configService.get<string>('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      this.logger.error('GEMINI_API_KEY is not defined in .env');
+      throw new Error('GEMINI_API_KEY is required');
+    }
     this.client = new GoogleGenerativeAI(GEMINI_API_KEY);
     this.logger.log('Gemini client initialized successfully');
   }
@@ -43,12 +47,14 @@ export class AuthService {
   private userCollection: Collection;
   private resetTokenCollection: Collection;
   private readonly logger = new Logger(AuthService.name);
-  private readonly embeddingFunction = new GeminiEmbeddingFunction();
+  private readonly embeddingFunction: IEmbeddingFunction;
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly chromaClient: ChromaClient,
+    private readonly configService: ConfigService,
   ) {
+    this.embeddingFunction = new GeminiEmbeddingFunction(configService);
     this.initializeCollections();
   }
 
@@ -114,11 +120,11 @@ export class AuthService {
         where: { email },
       });
 
-      if (result.ids.length === 0) {
+      if (result.ids.length === 0 || !result.documents[0]) {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      const userDoc = JSON.parse(result.documents[0]!);
+      const userDoc = JSON.parse(result.documents[0]);
       this.logger.log('Verifying password');
       const isPasswordValid = await bcrypt.compare(password, userDoc.password);
 
@@ -146,7 +152,7 @@ export class AuthService {
         where: { email },
       });
 
-      if (result.ids.length === 0) {
+      if (result.ids.length === 0 || !result.documents[0]) {
         throw new NotFoundException('User not found');
       }
 
@@ -179,11 +185,11 @@ export class AuthService {
         ids: [resetToken],
       });
 
-      if (result.ids.length === 0) {
+      if (result.ids.length === 0 || !result.documents[0]) {
         throw new UnauthorizedException('Invalid or expired reset token');
       }
 
-      const tokenDoc = JSON.parse(result.documents[0]!);
+      const tokenDoc = JSON.parse(result.documents[0]);
       if (tokenDoc.expiresAt < Date.now()) {
         await this.resetTokenCollection.delete({ ids: [resetToken] });
         throw new UnauthorizedException('Reset token expired');
@@ -194,13 +200,13 @@ export class AuthService {
         where: { email: tokenDoc.email },
       });
 
-      if (userResult.ids.length === 0) {
+      if (userResult.ids.length === 0 || !userResult.documents[0]) {
         throw new NotFoundException('User not found');
       }
 
       this.logger.log('Hashing new password');
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-      const userDoc = JSON.parse(userResult.documents[0]!);
+      const userDoc = JSON.parse(userResult.documents[0]);
       const updatedUserDoc = JSON.stringify({
         ...userDoc,
         password: hashedPassword,

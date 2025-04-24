@@ -17,11 +17,16 @@ const jwt_1 = require("@nestjs/jwt");
 const bcrypt = require("bcryptjs");
 const generative_ai_1 = require("@google/generative-ai");
 const uuid_1 = require("uuid");
+const config_1 = require("@nestjs/config");
 class GeminiEmbeddingFunction {
     logger = new common_1.Logger(GeminiEmbeddingFunction.name);
     client;
-    constructor() {
-        const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs';
+    constructor(configService) {
+        const GEMINI_API_KEY = configService.get('GEMINI_API_KEY');
+        if (!GEMINI_API_KEY) {
+            this.logger.error('GEMINI_API_KEY is not defined in .env');
+            throw new Error('GEMINI_API_KEY is required');
+        }
         this.client = new generative_ai_1.GoogleGenerativeAI(GEMINI_API_KEY);
         this.logger.log('Gemini client initialized successfully');
     }
@@ -46,13 +51,16 @@ class GeminiEmbeddingFunction {
 let AuthService = AuthService_1 = class AuthService {
     jwtService;
     chromaClient;
+    configService;
     userCollection;
     resetTokenCollection;
     logger = new common_1.Logger(AuthService_1.name);
-    embeddingFunction = new GeminiEmbeddingFunction();
-    constructor(jwtService, chromaClient) {
+    embeddingFunction;
+    constructor(jwtService, chromaClient, configService) {
         this.jwtService = jwtService;
         this.chromaClient = chromaClient;
+        this.configService = configService;
+        this.embeddingFunction = new GeminiEmbeddingFunction(configService);
         this.initializeCollections();
     }
     async initializeCollections() {
@@ -110,7 +118,7 @@ let AuthService = AuthService_1 = class AuthService {
             const result = await this.userCollection.get({
                 where: { email },
             });
-            if (result.ids.length === 0) {
+            if (result.ids.length === 0 || !result.documents[0]) {
                 throw new common_1.UnauthorizedException('Invalid credentials');
             }
             const userDoc = JSON.parse(result.documents[0]);
@@ -136,7 +144,7 @@ let AuthService = AuthService_1 = class AuthService {
             const result = await this.userCollection.get({
                 where: { email },
             });
-            if (result.ids.length === 0) {
+            if (result.ids.length === 0 || !result.documents[0]) {
                 throw new common_1.NotFoundException('User not found');
             }
             this.logger.log('Generating reset token');
@@ -164,7 +172,7 @@ let AuthService = AuthService_1 = class AuthService {
             const result = await this.resetTokenCollection.get({
                 ids: [resetToken],
             });
-            if (result.ids.length === 0) {
+            if (result.ids.length === 0 || !result.documents[0]) {
                 throw new common_1.UnauthorizedException('Invalid or expired reset token');
             }
             const tokenDoc = JSON.parse(result.documents[0]);
@@ -176,7 +184,7 @@ let AuthService = AuthService_1 = class AuthService {
             const userResult = await this.userCollection.get({
                 where: { email: tokenDoc.email },
             });
-            if (userResult.ids.length === 0) {
+            if (userResult.ids.length === 0 || !userResult.documents[0]) {
                 throw new common_1.NotFoundException('User not found');
             }
             this.logger.log('Hashing new password');
@@ -206,6 +214,7 @@ exports.AuthService = AuthService;
 exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [jwt_1.JwtService,
-        chromadb_1.ChromaClient])
+        chromadb_1.ChromaClient,
+        config_1.ConfigService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map
