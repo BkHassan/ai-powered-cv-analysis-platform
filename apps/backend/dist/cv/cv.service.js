@@ -17,23 +17,18 @@ const generative_ai_1 = require("@google/generative-ai");
 class GeminiEmbeddingFunction {
     logger = new common_1.Logger(GeminiEmbeddingFunction.name);
     client;
-    constructor(apiKey) {
-        this.client = new generative_ai_1.GoogleGenerativeAI(apiKey);
-        this.logger.log('Gemini client initialized');
+    constructor() {
+        const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs';
+        this.client = new generative_ai_1.GoogleGenerativeAI(GEMINI_API_KEY);
+        this.logger.log('Gemini client initialized successfully');
     }
     async generate(texts) {
         try {
             const model = this.client.getGenerativeModel({ model: 'text-embedding-004' });
             const embeddings = [];
             for (const text of texts) {
-                if (!text || text.trim() === '') {
-                    this.logger.warn('Empty text provided, using dummy embedding');
-                    embeddings.push(Array(768).fill(0));
-                    continue;
-                }
                 const result = await model.embedContent(text);
                 const embedding = result.embedding.values;
-                this.logger.debug(`Generated embedding for text: ${text.slice(0, 50)}... (length: ${embedding.length})`);
                 embeddings.push(embedding);
             }
             this.logger.log(`Generated embeddings for ${texts.length} texts`);
@@ -41,8 +36,7 @@ class GeminiEmbeddingFunction {
         }
         catch (error) {
             this.logger.error('Failed to generate embeddings', error.stack, error.message);
-            this.logger.warn('Using dummy embeddings as fallback');
-            return texts.map(() => Array(768).fill(0));
+            throw new Error('Gemini embedding generation failed');
         }
     }
 }
@@ -51,11 +45,9 @@ let CvService = CvService_1 = class CvService {
     cvCollection;
     userCollection;
     logger = new common_1.Logger(CvService_1.name);
-    embeddingFunction;
+    embeddingFunction = new GeminiEmbeddingFunction();
     constructor(chromaClient) {
         this.chromaClient = chromaClient;
-        const GEMINI_API_KEY = 'AIzaSyADup97tvmlHVXjRxOcqi2-7hWIypZVuMs';
-        this.embeddingFunction = new GeminiEmbeddingFunction(GEMINI_API_KEY);
         this.initializeCollections();
     }
     async initializeCollections() {
@@ -107,13 +99,15 @@ let CvService = CvService_1 = class CvService {
                 documents: [cvDocument],
                 metadatas: [{ email }],
             });
+            await new Promise(resolve => setTimeout(resolve, 100));
             this.logger.log(`CV uploaded: ${cvId}`);
             const verify = await this.cvCollection.get({ ids: [cvId] });
-            if (verify.ids.length === 0) {
+            this.logger.debug(`Verify result: ${JSON.stringify(verify)}`);
+            if (verify.ids.length === 0 || !verify.documents[0]) {
                 this.logger.error(`CV ${cvId} not found after upload`);
                 throw new Error('CV upload failed to persist');
             }
-            this.logger.debug(`Verified CV ${cvId} in ChromaDB: ${JSON.stringify(verify.ids)}`);
+            this.logger.log(`Verified CV ${cvId} in ChromaDB`);
             return { cvId };
         }
         catch (error) {
@@ -183,6 +177,28 @@ let CvService = CvService_1 = class CvService {
         }
         catch (error) {
             this.logger.error('CV retrieval failed', error.stack, error.message);
+            throw error;
+        }
+    }
+    async debugCvs() {
+        try {
+            const result = await this.cvCollection.get();
+            this.logger.log(`Debug CVs: ${JSON.stringify(result)}`);
+            return result;
+        }
+        catch (error) {
+            this.logger.error('Debug CVs failed', error.stack, error.message);
+            throw error;
+        }
+    }
+    async healthCheck() {
+        try {
+            const heartbeat = await this.chromaClient.heartbeat();
+            this.logger.log(`ChromaDB heartbeat: ${JSON.stringify(heartbeat)}`);
+            return { status: 'ok', chromadb: heartbeat };
+        }
+        catch (error) {
+            this.logger.error('Health check failed', error.stack, error.message);
             throw error;
         }
     }

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, ValidationPipe, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, ValidationPipe, UseGuards, Request, ForbiddenException } from '@nestjs/common';
 import { CvService } from './cv.service';
 import { UploadCvDto } from './dto/upload-cv';
 import { AssignCvDto } from './dto/assign-cv';
@@ -14,12 +14,12 @@ export class CvController {
     return this.cvService.uploadCv(uploadCvDto, req.user.role);
   }
 
-  @Post('cv:cvId/assign')
+  @Post(':cvId/assign')
   async assignCv(@Param('cvId') cvId: string, @Body(ValidationPipe) assignCvDto: AssignCvDto, @Request() req): Promise<void> {
     return this.cvService.assignCv(cvId, assignCvDto, req.user.role);
   }
 
-  @Post('cv:cvId')
+  @Get(':cvId')
   async getCv(@Param('cvId') cvId: string, @Request() req): Promise<any> {
     return this.cvService.getCv(cvId, req.user.email, req.user.role);
   }
