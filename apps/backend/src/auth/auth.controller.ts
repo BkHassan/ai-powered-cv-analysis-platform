@@ -1,21 +1,31 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, ValidationPipe } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
-import { ChromaClient } from 'chromadb';
+import { ForgotPasswordDto } from './dto/forgot-password';
+import { ResetPasswordDto } from './dto/reset-password';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
-  async signup(@Body() signupDto: SignupDto) {
+  async signup(@Body(ValidationPipe) signupDto: SignupDto): Promise<{ accessToken: string }> {
     return this.authService.signup(signupDto);
   }
 
   @Post('login')
-  @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
+  async login(@Body(ValidationPipe) loginDto: LoginDto): Promise<{ accessToken: string }> {
     return this.authService.login(loginDto);
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body(ValidationPipe) forgotPasswordDto: ForgotPasswordDto): Promise<{ resetToken: string }> {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body(ValidationPipe) resetPasswordDto: ResetPasswordDto): Promise<void> {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 }

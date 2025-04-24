@@ -1,24 +1,15 @@
 # Development Dockerfile
-FROM node:18
+FROM node:18-bullseye
 WORKDIR /app
 
 # Install PNPM
 RUN npm install -g pnpm
 
-# sharp
-RUN npm install -g pnpm
-RUN apt-get update && apt-get install -y libvips-dev \
-    build-essential \
-    libvips-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libwebp-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pnpm add sharp
-# Copy package files and install dependencies
+# Copy package files
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --force
+
+# Install regular dependencies with pnpm
+RUN pnpm install --no-frozen-lockfile
 
 # Copy source code and config
 COPY tsconfig.json ./
