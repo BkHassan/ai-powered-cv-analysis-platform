@@ -22,10 +22,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./chromadb-data:/chroma/chroma
+      - chromadb_data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/chroma
+      - CHROMA_SERVER_DB=duckdb
     healthcheck:
       test: [ "CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000" ]
       interval: 30s
