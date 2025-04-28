@@ -48,7 +48,10 @@ export function UploadCV() {
       console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type)
 
       // Simulate network delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("name", "Jane")
+      formData.append("email", "jane@example.com")
 
       setStatus({ type: "success", message: "CV uploaded successfully!" })
       setFile(null)

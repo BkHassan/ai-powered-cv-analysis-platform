@@ -1,9 +1,31 @@
+'use client'
+
 import { Navbar } from "@/components/navbar"
 import { UploadCV } from "@/components/upload-cv"
 import { ChatWithCV } from "@/components/chat-with-cv"
 import { CVList } from "@/components/cv-list"
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function AdminDashboard() {
+  const router = useRouter();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    //example: check if token exist in localStorage
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.replace("/");
+      return;
+    } else {
+      setIsCheckingAuth(false);
+    }
+  }, [router]);
+
+    if (isCheckingAuth)  {
+      return <div>Loading...</div>;
+    }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />

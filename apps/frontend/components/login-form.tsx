@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react"
 
+
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -16,11 +17,42 @@ export function LoginForm() {
     e.preventDefault()
     setIsLoading(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 1500)
-  }
+    const formData = {
+      email: (e.currentTarget.elements.namedItem("email") as HTMLInputElement)
+        .value,
+      password: (
+        e.currentTarget.elements.namedItem("password") as HTMLInputElement
+      ).value,
+    };
+
+    try {
+      const response = await fetch("http://localhost:3003/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Login failed");
+      }
+
+      const data = await response.json();
+      console.log("Login success:", data);
+
+      //save token in localStorage
+      localStorage.setItem("token", data.accessToken);
+      
+      // maybe redirect or show success
+      window.location.href= "/admin";
+
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

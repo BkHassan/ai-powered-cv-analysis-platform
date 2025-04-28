@@ -9,7 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react";
 
-export function SignupForm() {
+
+type SignupFormProps = {
+  onSignupSuccess: () => void;
+}
+
+export function SignupForm({ onSignupSuccess }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -46,6 +51,7 @@ export function SignupForm() {
       const data = await response.json();
       console.log("Signup success:", data);
       // maybe redirect or show success
+      onSignupSuccess();
     } catch (error) {
       console.error("Error:", error);
     } finally {
@@ -74,7 +80,7 @@ export function SignupForm() {
           <select
             id="role"
             required
-            className="w-full border rounded px-2 py-1"
+            className="w-full border rounded px-2 py-2"
           >
             <option value="user">User</option>
             <option value="admin">Admin</option>

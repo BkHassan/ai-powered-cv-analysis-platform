@@ -33,7 +33,14 @@ export default function AuthPage() {
             </p>
           </div>
 
-          {isLogin ? <LoginForm /> : <SignupForm />}
+          {/* {isLogin ? <LoginForm /> : <SignupForm />} */}
+
+
+          {isLogin ? (
+            <LoginForm />
+          ) : (
+            <SignupForm onSignupSuccess={() => setIsLogin(true)} />
+          )}
 
           <div className="text-center">
             <button onClick={() => setIsLogin(!isLogin)} className="text-sm text-primary hover:underline">
