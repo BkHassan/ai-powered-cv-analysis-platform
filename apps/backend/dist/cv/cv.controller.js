@@ -16,8 +16,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CvController = void 0;
 const common_1 = require("@nestjs/common");
 const cv_service_1 = require("./cv.service");
-const upload_cv_1 = require("./dto/upload-cv");
-const assign_cv_1 = require("./dto/assign-cv");
 const chat_cv_dto_1 = require("./dto/chat-cv.dto");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 let CvController = CvController_1 = class CvController {
@@ -26,21 +24,13 @@ let CvController = CvController_1 = class CvController {
     constructor(cvService) {
         this.cvService = cvService;
     }
-    async uploadCv(uploadCvDto, req) {
-        this.logger.log('Upload cv request by ${req.user.email}');
-        return this.cvService.uploadCv(uploadCvDto, req.user.role);
-    }
-    async assignCv(cvId, assignCvDto, req) {
-        this.logger.log(`Assign cv ${cvId} request by ${req.user.email}`);
-        return this.cvService.assignCv(cvId, assignCvDto, req.user.role);
-    }
     async getCv(cvId, req) {
         this.logger.log(`Get CV ${cvId} request by ${req.user.email}`);
         return this.cvService.getCv(cvId, req.user.email, req.user.role);
     }
     async listCvs(req) {
         this.logger.log(`List CVs request by ${req.user.email}`);
-        return this.cvService.listCvs(req.user.role);
+        return this.cvService.listCvs(req.user.role, req.user.email);
     }
     async chatCv(cvId, chatCvDto, req) {
         this.logger.log(`Chat CV ${cvId} request by ${req.user.email}`);
@@ -48,23 +38,6 @@ let CvController = CvController_1 = class CvController {
     }
 };
 exports.CvController = CvController;
-__decorate([
-    (0, common_1.Post)('upload'),
-    __param(0, (0, common_1.Body)(common_1.ValidationPipe)),
-    __param(1, (0, common_1.Request)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [upload_cv_1.UploadCvDto, Object]),
-    __metadata("design:returntype", Promise)
-], CvController.prototype, "uploadCv", null);
-__decorate([
-    (0, common_1.Post)(':cvId/assign'),
-    __param(0, (0, common_1.Param)('cvId')),
-    __param(1, (0, common_1.Body)(common_1.ValidationPipe)),
-    __param(2, (0, common_1.Request)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, assign_cv_1.AssignCvDto, Object]),
-    __metadata("design:returntype", Promise)
-], CvController.prototype, "assignCv", null);
 __decorate([
     (0, common_1.Get)(':cvId'),
     __param(0, (0, common_1.Param)('cvId')),

@@ -1,7 +1,7 @@
 import { Injectable, Logger, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 import { UploadCvDto } from './dto/upload-cv';
-import { AssignCvDto } from './dto/assign-cv';
+// import { AssignCvDto } from './dto/assign-cv';
 import { ChatCvDto } from './dto/chat-cv.dto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ConfigService } from '@nestjs/config';
@@ -82,10 +82,7 @@ export class CvService {
     }
   }
 
-  async uploadCv(uploadCvDto: UploadCvDto, requesterRole: string): Promise<{ cvId: string }> {
-    if (requesterRole !== 'admin') {
-      throw new ForbiddenException('Only admins can upload CVs');
-    }
+  async uploadCv(uploadCvDto: UploadCvDto, uploaderEmail: string): Promise<{ cvId: string }> {
 
     const { name, email, skills } = uploadCvDto;
     try {
@@ -98,11 +95,13 @@ export class CvService {
 
       this.logger.log(`Uploading CV for ${email}`);
       const cvId = await this.generateCvId();
-      const cvDocument = JSON.stringify({ name, email, skills, assignedUserEmail: null });
+      const cvDocument = JSON.stringify({ name, email, skills, assignedUserEmail: null, 
+        uploadDate: new Date().toISOString()
+       });
       await this.cvCollection.add({
         ids: [cvId],
         documents: [cvDocument],
-        metadatas: [{ email }],
+        metadatas: [{ email, uploadedBy: uploaderEmail }],
       });
       await new Promise(resolve => setTimeout(resolve, 100)); // Ensure SQLite write
       this.logger.log(`CV uploaded: ${cvId}`);
@@ -123,55 +122,55 @@ export class CvService {
     }
   }
 
-  async assignCv(cvId: string, assignCvDto: AssignCvDto, requesterRole: string): Promise<void> {
-    if (requesterRole !== 'admin') {
-      throw new ForbiddenException('Only admins can assign CVs');
-    }
+  // async assignCv(cvId: string, assignCvDto: AssignCvDto, requesterRole: string): Promise<void> {
+  //   if (requesterRole !== 'admin') {
+  //     throw new ForbiddenException('Only admins can assign CVs');
+  //   }
 
-    const { userEmail } = assignCvDto;
-    try {
-      this.logger.log(`Assigning CV ${cvId} to user ${userEmail}`);
-      const cvResult = await this.cvCollection.get({ ids: [cvId] });
-      this.logger.debug(`CV query result: ${JSON.stringify(cvResult)}`);
-      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
-        this.logger.warn(`CV ${cvId} not found`);
-        throw new NotFoundException('CV not found');
-      }
+  //   const { userEmail } = assignCvDto;
+  //   try {
+  //     this.logger.log(`Assigning CV ${cvId} to user ${userEmail}`);
+  //     const cvResult = await this.cvCollection.get({ ids: [cvId] });
+  //     this.logger.debug(`CV query result: ${JSON.stringify(cvResult)}`);
+  //     if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
+  //       this.logger.warn(`CV ${cvId} not found`);
+  //       throw new NotFoundException('CV not found');
+  //     }
 
-      const userResult = await this.userCollection.get({ where: { email: userEmail } });
-      this.logger.debug(`User query result: ${JSON.stringify(userResult)}`);
-      if (userResult.ids.length === 0 || !userResult.documents[0]) {
-        this.logger.warn(`User ${userEmail} not found`);
-        throw new NotFoundException('User not found');
-      }
+  //     const userResult = await this.userCollection.get({ where: { email: userEmail } });
+  //     this.logger.debug(`User query result: ${JSON.stringify(userResult)}`);
+  //     if (userResult.ids.length === 0 || !userResult.documents[0]) {
+  //       this.logger.warn(`User ${userEmail} not found`);
+  //       throw new NotFoundException('User not found');
+  //     }
 
-      const cvDoc = JSON.parse(cvResult.documents[0]);
-      const updatedCvDoc = JSON.stringify({ ...cvDoc, assignedUserEmail: userEmail });
+  //     const cvDoc = JSON.parse(cvResult.documents[0]);
+  //     const updatedCvDoc = JSON.stringify({ ...cvDoc, assignedUserEmail: userEmail });
 
-      await this.cvCollection.update({
-        ids: [cvId],
-        documents: [updatedCvDoc],
-        metadatas: [{ email: cvDoc.email }],
-      });
+  //     await this.cvCollection.update({
+  //       ids: [cvId],
+  //       documents: [updatedCvDoc],
+  //       metadatas: [{ email: cvDoc.email }],
+  //     });
 
-      const userDoc = JSON.parse(userResult.documents[0]);
-      const updatedUserDoc = JSON.stringify({
-        ...userDoc,
-        cv_id: [...(userDoc.cv_id || []), cvId],
-      });
+  //     const userDoc = JSON.parse(userResult.documents[0]);
+  //     const updatedUserDoc = JSON.stringify({
+  //       ...userDoc,
+  //       cv_id: [...(userDoc.cv_id || []), cvId],
+  //     });
 
-      await this.userCollection.update({
-        ids: [userResult.ids[0]],
-        documents: [updatedUserDoc],
-        metadatas: [{ email: userEmail }],
-      });
+  //     await this.userCollection.update({
+  //       ids: [userResult.ids[0]],
+  //       documents: [updatedUserDoc],
+  //       metadatas: [{ email: userEmail }],
+  //     });
 
-      this.logger.log(`CV ${cvId} assigned to user ${userEmail}`);
-    } catch (error) {
-      this.logger.error('CV assignment failed', error.stack, error.message);
-      throw error;
-    }
-  }
+  //     this.logger.log(`CV ${cvId} assigned to user ${userEmail}`);
+  //   } catch (error) {
+  //     this.logger.error('CV assignment failed', error.stack, error.message);
+  //     throw error;
+  //   }
+  // }
 
   async getCv(cvId: string, requesterEmail: string, requesterRole: string): Promise<any> {
     try {
@@ -198,19 +197,34 @@ export class CvService {
   }
 
   // list all cv for admin only
-  async listCvs(requesterRole: string): Promise<any[]> {
-    if (requesterRole !== 'admin') {
-      this.logger.warn(`Unauthorized attempt to list CVs by non-admin`);
-      throw new ForbiddenException('Only admins can list all CVs');
-    }
-
+  async listCvs(requesterRole: string, requesterEmail: string): Promise<any[]> {
     try {
       const result = await this.cvCollection.get();
       this.logger.log(`Retrieved ${result.ids.length} CVs`);
-      return result.documents.map((doc, index) => ({
-        cvId: result.ids[index],
-        ...JSON.parse(doc!),
-      }));
+
+      const allCvs = result.documents.map((doc, index) => {
+        const parsedDoc = JSON.parse(doc!);
+        return {
+          realId: result.ids[index],
+          indexId: index + 1,
+          name: parsedDoc.name,
+          email: parsedDoc.email,
+          uploadDate: parsedDoc.uploadDate,
+          uploadedBy: result.metadatas[index]!.uploadedBy
+      }; 
+      });
+      
+    if (requesterRole == 'admin') {
+      return allCvs;
+    } else {
+      const userCvs = allCvs.filter(cv => {
+      console.log(`Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`);
+      return cv.uploadedBy === requesterEmail;
+    });
+    console.log(`Filtered User CVs: ${JSON.stringify(userCvs)}`);
+    return userCvs;
+  }
+
     } catch (error) {
       this.logger.error('List CVs failed', error.stack, error.message);
       throw error;

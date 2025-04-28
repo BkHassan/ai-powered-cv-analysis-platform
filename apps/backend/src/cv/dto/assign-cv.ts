@@ -1,6 +1,6 @@
-import { IsEmail } from 'class-validator';
+// import { IsEmail } from 'class-validator';
 
-export class AssignCvDto {
-  @IsEmail()
-  userEmail: string;
-}
+// export class AssignCvDto {
+//   @IsEmail()
+//   userEmail: string;
+// }

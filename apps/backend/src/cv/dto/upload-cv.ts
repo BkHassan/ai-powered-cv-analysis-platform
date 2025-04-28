@@ -1,7 +1,6 @@
 import { IsString, IsEmail, IsArray } from 'class-validator';
 
 export class UploadCvDto {
-  @IsString()
   @IsEmail()
   email: string;
 
