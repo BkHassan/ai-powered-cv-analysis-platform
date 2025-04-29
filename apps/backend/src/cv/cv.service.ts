@@ -10,10 +10,10 @@ import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 import { ChatCvDto } from './dto/chat-cv.dto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ConfigService } from '@nestjs/config';
-// import * as PDFParser from 'pdf2json';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Express } from 'express';
+import pdfParse = require('pdf-parse');
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -104,16 +104,6 @@ export class CvService {
     }
   }
 
-  // private async extractTextFormPdf(filePath: string): Promise<string> {
-  //   return new Promise((resolve, reject) => {
-  //     const pdfParser = new PDFParser.PDFParser();
-  //     pdfParser.on('pdfParser_dataError', (errData) => reject(errData));
-  //     pdfParser.on('pdfParser_dataReady', () => {
-  //       resolve(pdfParser.getRawTextContent());
-  //     });
-  //     pdfParser.loadPDF(filePath);
-  //   });
-  // }
 
   async uploadCv(uploaderEmail: string, file: Express.Multer.File): Promise<{ cvId: string }> {
     try {
@@ -149,6 +139,7 @@ export class CvService {
       fs.writeFileSync(filePath, file.buffer);
       this.logger.log(`CV file saved to: ${filePath}`);
 
+      // Store original CV metadata (for compatibility with listCvs, getCv)
       const cvDocument = JSON.stringify({
         uploadDate: new Date().toISOString(),
         name: fileNameWithoutExt,
@@ -160,13 +151,91 @@ export class CvService {
         documents: [cvDocument],
         metadatas: [{ uploadedBy: uploaderEmail }],
       });
+      this.logger.log(`Stored CV metadata for ${cvId}`);
 
-      this.logger.log(`CV uploaded: ${cvId}`);
+      // Convert PDF to text and store chunks
+      const text = await this.extractTextFromPdf(filePath);
+      this.logger.log(`Extracted text length: ${text.length} characters`);
+
+      // Split text into chunks
+      const chunks = this.splitTextIntoChunks(text, 500);
+      this.logger.log(`Split text into ${chunks.length} chunks`);
+
+      // Generate embeddings for chunks
+      const embeddings = await this.embeddingFunction.generate(chunks);
+      this.logger.log(`Generated ${embeddings.length} embeddings`);
+
+      // Prepare chunk documents and metadata
+      const chunkDocuments = chunks.map((chunk, index) => JSON.stringify({
+        chunkIndex: index,
+        text: chunk,
+        cvId,
+        uploadDate: new Date().toISOString(),
+        name: fileNameWithoutExt,
+        fileName,
+      }));
+
+      const chunkMetadatas = chunks.map((_, index) => ({
+        cvId,
+        uploadedBy: uploaderEmail,
+        chunkIndex: index,
+        fileName,
+      }));
+
+      const chunkIds = chunks.map((_, index) => `${cvId}_chunk_${index}`);
+
+      // Store chunks in ChromaDB
+      await this.cvCollection.add({
+        ids: chunkIds,
+        documents: chunkDocuments,
+        metadatas: chunkMetadatas,
+        embeddings,
+      });
+      this.logger.log(`Stored ${chunks.length} chunks for CV ${cvId} in ChromaDB`);
+
       return { cvId };
     } catch (error) {
       this.logger.error('CV upload failed', error.stack, error.message);
       throw error;
     }
+  }
+
+  // Helper method to extract text from PDF
+  private async extractTextFromPdf(filePath: string): Promise<string> {
+    try {
+      const dataBuffer = fs.readFileSync(filePath);
+      const pdf = await pdfParse(dataBuffer);
+      return pdf.text;
+    } catch (error) {
+      this.logger.error(`Failed to extract text from ${filePath}`, error.stack, error.message);
+      throw new Error('PDF text extraction failed');
+    }
+  }
+
+  // Helper method to split text into chunks
+  private splitTextIntoChunks(text: string, maxTokens: number): string[] {
+    const words = text.split(/\s+/);
+    const chunks: string[] = [];
+    let currentChunk: string[] = [];
+    let currentTokenCount = 0;
+
+    for (const word of words) {
+      const tokenEstimate = Math.ceil(word.length / 4); // Rough estimate: 1 token ≈ 4 characters
+      if (currentTokenCount + tokenEstimate > maxTokens) {
+        chunks.push(currentChunk.join(' '));
+        currentChunk = [word];
+        currentTokenCount = tokenEstimate;
+      } else {
+        currentChunk.push(word);
+        currentTokenCount += tokenEstimate;
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      chunks.push(currentChunk.join(' '));
+    }
+
+    return chunks.filter(chunk => chunk.trim().length > 0);
   }
 
   async getCv(
