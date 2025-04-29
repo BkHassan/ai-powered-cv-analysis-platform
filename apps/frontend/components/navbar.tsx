@@ -38,7 +38,7 @@ export function Navbar() {
 
 function NavLinks({ mobile = false, onClick = () => {} }) {
   const links = [
-    { href: "/", label: "Home" },
+    { href: "/admin", label: "Home" },
     { href: "/admin/upload", label: "Upload CV" },
     { href: "/admin/chat", label: "Chat" },
     { href: "/admin/cvs", label: "List CVs" },
