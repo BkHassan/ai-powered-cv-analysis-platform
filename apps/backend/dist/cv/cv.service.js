@@ -15,6 +15,8 @@ const common_1 = require("@nestjs/common");
 const chromadb_1 = require("chromadb");
 const generative_ai_1 = require("@google/generative-ai");
 const config_1 = require("@nestjs/config");
+const fs = require("fs");
+const path = require("path");
 class GeminiEmbeddingFunction {
     logger = new common_1.Logger(GeminiEmbeddingFunction.name);
     client;
@@ -29,7 +31,9 @@ class GeminiEmbeddingFunction {
     }
     async generate(texts) {
         try {
-            const model = this.client.getGenerativeModel({ model: 'text-embedding-004' });
+            const model = this.client.getGenerativeModel({
+                model: 'text-embedding-004',
+            });
             const embeddings = [];
             for (const text of texts) {
                 const result = await model.embedContent(text);
@@ -52,6 +56,7 @@ let CvService = CvService_1 = class CvService {
     userCollection;
     logger = new common_1.Logger(CvService_1.name);
     embeddingFunction;
+    uploadFolder = path.join(__dirname, '..', 'uploads');
     constructor(chromaClient, configService) {
         this.chromaClient = chromaClient;
         this.configService = configService;
@@ -87,34 +92,26 @@ let CvService = CvService_1 = class CvService {
             throw new Error('CV ID generation failed');
         }
     }
-    async uploadCv(uploadCvDto, uploaderEmail) {
-        const { name, email, skills } = uploadCvDto;
+    async uploadCv(uploaderEmail, file) {
         try {
-            this.logger.log(`Checking for existing CV with email: ${email}`);
-            const existingCv = await this.cvCollection.get({ where: { email } });
-            if (existingCv.ids.length > 0) {
-                this.logger.warn(`CV already exists for email: ${email}`);
-                throw new common_1.ConflictException('CV already exists');
+            if (!fs.existsSync(this.uploadFolder)) {
+                fs.mkdirSync(this.uploadFolder, { recursive: true });
+                this.logger.log(`Created upload folder: ${this.uploadFolder}`);
             }
-            this.logger.log(`Uploading CV for ${email}`);
             const cvId = await this.generateCvId();
-            const cvDocument = JSON.stringify({ name, email, skills, assignedUserEmail: null,
-                uploadDate: new Date().toISOString()
+            const fileName = `${cvId}_${file.originalname}`;
+            const filePath = path.join(this.uploadFolder, fileName);
+            fs.writeFileSync(filePath, file.buffer);
+            this.logger.log(`CV file saved to: ${filePath}`);
+            const cvDocument = JSON.stringify({
+                uploadDate: new Date().toISOString(),
             });
             await this.cvCollection.add({
                 ids: [cvId],
                 documents: [cvDocument],
-                metadatas: [{ email, uploadedBy: uploaderEmail }],
+                metadatas: [{ uploadedBy: uploaderEmail }],
             });
-            await new Promise(resolve => setTimeout(resolve, 100));
             this.logger.log(`CV uploaded: ${cvId}`);
-            const verify = await this.cvCollection.get({ ids: [cvId] });
-            this.logger.debug(`Verify result: ${JSON.stringify(verify)}`);
-            if (verify.ids.length === 0 || !verify.documents[0]) {
-                this.logger.error(`CV ${cvId} not found after upload`);
-                throw new Error('CV upload failed to persist');
-            }
-            this.logger.log(`Verified CV ${cvId} in ChromaDB`);
             return { cvId };
         }
         catch (error) {
@@ -132,7 +129,8 @@ let CvService = CvService_1 = class CvService {
                 throw new common_1.NotFoundException('CV not found');
             }
             const cvDoc = JSON.parse(result.documents[0]);
-            if (requesterRole !== 'admin' && cvDoc.assignedUserEmail !== requesterEmail) {
+            if (requesterRole !== 'admin' &&
+                cvDoc.assignedUserEmail !== requesterEmail) {
                 this.logger.warn(`Unauthorized access attempt by ${requesterEmail} for CV ${cvId}`);
                 throw new common_1.ForbiddenException('You are not authorized to view this CV');
             }
@@ -156,14 +154,14 @@ let CvService = CvService_1 = class CvService {
                     name: parsedDoc.name,
                     email: parsedDoc.email,
                     uploadDate: parsedDoc.uploadDate,
-                    uploadedBy: result.metadatas[index].uploadedBy
+                    uploadedBy: result.metadatas[index].uploadedBy,
                 };
             });
-            if (requesterRole == 'admin') {
+            if (requesterRole === 'admin') {
                 return allCvs;
             }
             else {
-                const userCvs = allCvs.filter(cv => {
+                const userCvs = allCvs.filter((cv) => {
                     console.log(`Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`);
                     return cv.uploadedBy === requesterEmail;
                 });
@@ -187,7 +185,8 @@ let CvService = CvService_1 = class CvService {
             const cvDoc = JSON.parse(result.documents[0]);
             this.logger.debug(`CV document: ${JSON.stringify(cvDoc)}`);
             if (requesterRole !== 'admin') {
-                if (!cvDoc.assignedUserEmail || cvDoc.assignedUserEmail !== requesterEmail) {
+                if (!cvDoc.assignedUserEmail ||
+                    cvDoc.assignedUserEmail !== requesterEmail) {
                     this.logger.warn(`Unauthorized chat attempt by ${requesterEmail} for CV ${cvId}`);
                     throw new common_1.ForbiddenException('You are not authorized to chat with this CV');
                 }

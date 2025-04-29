@@ -12,17 +12,31 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 var CvController_1;
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CvController = void 0;
 const common_1 = require("@nestjs/common");
 const cv_service_1 = require("./cv.service");
 const chat_cv_dto_1 = require("./dto/chat-cv.dto");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
+const platform_express_1 = require("@nestjs/platform-express");
+const express_1 = require("express");
 let CvController = CvController_1 = class CvController {
     cvService;
     logger = new common_1.Logger(CvController_1.name);
     constructor(cvService) {
         this.cvService = cvService;
+    }
+    async uploadCV(file, req) {
+        if (!file) {
+            throw new common_1.BadRequestException('No file uploaded');
+        }
+        if (file.mimetype !== 'application/pdf') {
+            throw new common_1.BadRequestException('Only PDF files are accepted');
+        }
+        const uploaderEmail = req.user.email;
+        this.logger.log(`Upload CV request by ${uploaderEmail}`);
+        return this.cvService.uploadCv(uploaderEmail, file);
     }
     async getCv(cvId, req) {
         this.logger.log(`Get CV ${cvId} request by ${req.user.email}`);
@@ -38,6 +52,15 @@ let CvController = CvController_1 = class CvController {
     }
 };
 exports.CvController = CvController;
+__decorate([
+    (0, common_1.Post)('upload'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_b = typeof express_1.Express !== "undefined" && (_a = express_1.Express.Multer) !== void 0 && _a.File) === "function" ? _b : Object, Object]),
+    __metadata("design:returntype", Promise)
+], CvController.prototype, "uploadCV", null);
 __decorate([
     (0, common_1.Get)(':cvId'),
     __param(0, (0, common_1.Param)('cvId')),

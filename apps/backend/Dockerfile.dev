@@ -9,7 +9,8 @@ RUN npm install -g pnpm
 COPY package.json pnpm-lock.yaml ./
 
 # Install regular dependencies with pnpm
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --no-frozen-lockfile && \
+    pnpm add pdf2json
 
 # Copy source code and config
 COPY tsconfig.json ./

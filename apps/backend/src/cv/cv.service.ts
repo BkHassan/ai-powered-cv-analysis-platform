@@ -1,10 +1,19 @@
-import { Injectable, Logger, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
-import { UploadCvDto } from './dto/upload-cv';
-// import { AssignCvDto } from './dto/assign-cv';
+// import { UploadCvDto } from './dto/upload-cv';
 import { ChatCvDto } from './dto/chat-cv.dto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ConfigService } from '@nestjs/config';
+// import * as PDFParser from 'pdf2json';
+import * as fs from 'fs';
+import * as path from 'path';
+import { Express } from 'express';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -22,7 +31,9 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
 
   async generate(texts: string[]): Promise<number[][]> {
     try {
-      const model = this.client.getGenerativeModel({ model: 'text-embedding-004' });
+      const model = this.client.getGenerativeModel({
+        model: 'text-embedding-004',
+      });
       const embeddings: number[][] = [];
       for (const text of texts) {
         const result = await model.embedContent(text);
@@ -32,7 +43,11 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
       this.logger.log(`Generated embeddings for ${texts.length} texts`);
       return embeddings;
     } catch (error) {
-      this.logger.error('Failed to generate embeddings', error.stack, error.message);
+      this.logger.error(
+        'Failed to generate embeddings',
+        error.stack,
+        error.message,
+      );
       throw new Error('Gemini embedding generation failed');
     }
   }
@@ -44,6 +59,7 @@ export class CvService {
   private userCollection: Collection;
   private readonly logger = new Logger(CvService.name);
   private readonly embeddingFunction: IEmbeddingFunction;
+  private readonly uploadFolder = path.join(__dirname, '..', 'Cvfiles');
 
   constructor(
     private readonly chromaClient: ChromaClient,
@@ -65,7 +81,11 @@ export class CvService {
       });
       this.logger.log('ChromaDB collections initialized');
     } catch (error) {
-      this.logger.error('Failed to initialize ChromaDB collections', error.stack, error.message);
+      this.logger.error(
+        'Failed to initialize ChromaDB collections',
+        error.stack,
+        error.message,
+      );
       throw new Error('ChromaDB initialization failed');
     }
   }
@@ -74,7 +94,9 @@ export class CvService {
     try {
       const result = await this.cvCollection.get();
       const count = result.ids.length + 1;
-      this.logger.debug(`Generating CV ID: cv${count} (existing CVs: ${result.ids.length})`);
+      this.logger.debug(
+        `Generating CV ID: cv${count} (existing CVs: ${result.ids.length})`,
+      );
       return `cv${count}`;
     } catch (error) {
       this.logger.error('Failed to generate CV ID', error.stack, error.message);
@@ -82,39 +104,64 @@ export class CvService {
     }
   }
 
-  async uploadCv(uploadCvDto: UploadCvDto, uploaderEmail: string): Promise<{ cvId: string }> {
+  // private async extractTextFormPdf(filePath: string): Promise<string> {
+  //   return new Promise((resolve, reject) => {
+  //     const pdfParser = new PDFParser.PDFParser();
+  //     pdfParser.on('pdfParser_dataError', (errData) => reject(errData));
+  //     pdfParser.on('pdfParser_dataReady', () => {
+  //       resolve(pdfParser.getRawTextContent());
+  //     });
+  //     pdfParser.loadPDF(filePath);
+  //   });
+  // }
 
-    const { name, email, skills } = uploadCvDto;
+  async uploadCv(uploaderEmail: string, file: Express.Multer.File): Promise<{ cvId: string }> {
     try {
-      this.logger.log(`Checking for existing CV with email: ${email}`);
-      const existingCv = await this.cvCollection.get({ where: { email } });
-      if (existingCv.ids.length > 0) {
-        this.logger.warn(`CV already exists for email: ${email}`);
-        throw new ConflictException('CV already exists');
+      const absoluteUploadFolder = path.resolve(this.uploadFolder);
+      this.logger.log(`Upload folder path: ${absoluteUploadFolder}`);
+
+      if (!fs.existsSync(this.uploadFolder)) {
+        fs.mkdirSync(this.uploadFolder, { recursive: true });
+        this.logger.log(`Created upload folder: ${absoluteUploadFolder}`);
       }
 
-      this.logger.log(`Uploading CV for ${email}`);
+      // Check for duplicate CV by filename
+      const fileNameWithoutExt = file.originalname.replace(/\.pdf$/, '').toLowerCase();
+      const existingCvs = await this.cvCollection.get({
+        where: { uploadedBy: uploaderEmail },
+      });
+      this.logger.log(`Existing CVs: ${JSON.stringify(existingCvs.documents.map((doc: string) => JSON.parse(doc)))}`);
+      const duplicateCv = existingCvs.documents.find((doc: string) =>
+        JSON.parse(doc).name?.toLowerCase() === fileNameWithoutExt,
+      );
+      if (duplicateCv) {
+        this.logger.warn(
+          `Duplicate CV detected for ${uploaderEmail}, filename: ${file.originalname}`,
+        );
+        throw new BadRequestException('CV already exists');
+      }
+
       const cvId = await this.generateCvId();
-      const cvDocument = JSON.stringify({ name, email, skills, assignedUserEmail: null, 
-        uploadDate: new Date().toISOString()
-       });
+      const fileName = `${cvId}_${file.originalname}`;
+      const filePath = path.join(this.uploadFolder, fileName);
+      this.logger.log(`Saving CV to: ${path.resolve(filePath)}`);
+
+      fs.writeFileSync(filePath, file.buffer);
+      this.logger.log(`CV file saved to: ${filePath}`);
+
+      const cvDocument = JSON.stringify({
+        uploadDate: new Date().toISOString(),
+        name: fileNameWithoutExt,
+        fileName: fileName,
+      });
+
       await this.cvCollection.add({
         ids: [cvId],
         documents: [cvDocument],
-        metadatas: [{ email, uploadedBy: uploaderEmail }],
+        metadatas: [{ uploadedBy: uploaderEmail }],
       });
-      await new Promise(resolve => setTimeout(resolve, 100)); // Ensure SQLite write
+
       this.logger.log(`CV uploaded: ${cvId}`);
-
-      // Verify persistence
-      const verify = await this.cvCollection.get({ ids: [cvId] });
-      this.logger.debug(`Verify result: ${JSON.stringify(verify)}`);
-      if (verify.ids.length === 0 || !verify.documents[0]) {
-        this.logger.error(`CV ${cvId} not found after upload`);
-        throw new Error('CV upload failed to persist');
-      }
-      this.logger.log(`Verified CV ${cvId} in ChromaDB`);
-
       return { cvId };
     } catch (error) {
       this.logger.error('CV upload failed', error.stack, error.message);
@@ -122,57 +169,11 @@ export class CvService {
     }
   }
 
-  // async assignCv(cvId: string, assignCvDto: AssignCvDto, requesterRole: string): Promise<void> {
-  //   if (requesterRole !== 'admin') {
-  //     throw new ForbiddenException('Only admins can assign CVs');
-  //   }
-
-  //   const { userEmail } = assignCvDto;
-  //   try {
-  //     this.logger.log(`Assigning CV ${cvId} to user ${userEmail}`);
-  //     const cvResult = await this.cvCollection.get({ ids: [cvId] });
-  //     this.logger.debug(`CV query result: ${JSON.stringify(cvResult)}`);
-  //     if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
-  //       this.logger.warn(`CV ${cvId} not found`);
-  //       throw new NotFoundException('CV not found');
-  //     }
-
-  //     const userResult = await this.userCollection.get({ where: { email: userEmail } });
-  //     this.logger.debug(`User query result: ${JSON.stringify(userResult)}`);
-  //     if (userResult.ids.length === 0 || !userResult.documents[0]) {
-  //       this.logger.warn(`User ${userEmail} not found`);
-  //       throw new NotFoundException('User not found');
-  //     }
-
-  //     const cvDoc = JSON.parse(cvResult.documents[0]);
-  //     const updatedCvDoc = JSON.stringify({ ...cvDoc, assignedUserEmail: userEmail });
-
-  //     await this.cvCollection.update({
-  //       ids: [cvId],
-  //       documents: [updatedCvDoc],
-  //       metadatas: [{ email: cvDoc.email }],
-  //     });
-
-  //     const userDoc = JSON.parse(userResult.documents[0]);
-  //     const updatedUserDoc = JSON.stringify({
-  //       ...userDoc,
-  //       cv_id: [...(userDoc.cv_id || []), cvId],
-  //     });
-
-  //     await this.userCollection.update({
-  //       ids: [userResult.ids[0]],
-  //       documents: [updatedUserDoc],
-  //       metadatas: [{ email: userEmail }],
-  //     });
-
-  //     this.logger.log(`CV ${cvId} assigned to user ${userEmail}`);
-  //   } catch (error) {
-  //     this.logger.error('CV assignment failed', error.stack, error.message);
-  //     throw error;
-  //   }
-  // }
-
-  async getCv(cvId: string, requesterEmail: string, requesterRole: string): Promise<any> {
+  async getCv(
+    cvId: string,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<{ filePath: string; fileName: string }> {
     try {
       this.logger.log(`Retrieving CV ${cvId} for requester ${requesterEmail}`);
       const result = await this.cvCollection.get({ ids: [cvId] });
@@ -183,20 +184,31 @@ export class CvService {
       }
 
       const cvDoc = JSON.parse(result.documents[0]);
-      if (requesterRole !== 'admin' && cvDoc.assignedUserEmail !== requesterEmail) {
-        this.logger.warn(`Unauthorized access attempt by ${requesterEmail} for CV ${cvId}`);
+      if (
+        requesterRole !== 'admin' &&
+        result.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        this.logger.warn(
+          `Unauthorized access attempt by ${requesterEmail} for CV ${cvId}`,
+        );
         throw new ForbiddenException('You are not authorized to view this CV');
       }
 
-      this.logger.log(`CV ${cvId} retrieved successfully`);
-      return cvDoc;
+      const fileName = cvDoc.fileName || `${cvId}_cv.pdf`; // Fallback filename
+      const filePath = path.join(this.uploadFolder, fileName);
+      if (!fs.existsSync(filePath)) {
+        this.logger.warn(`CV file not found at: ${filePath}`);
+        throw new NotFoundException('CV file not found');
+      }
+
+      this.logger.log(`CV ${cvId} retrieved successfully at: ${filePath}`);
+      return { filePath, fileName };
     } catch (error) {
       this.logger.error('CV retrieval failed', error.stack, error.message);
       throw error;
     }
   }
 
-  // list all cv for admin only
   async listCvs(requesterRole: string, requesterEmail: string): Promise<any[]> {
     try {
       const result = await this.cvCollection.get();
@@ -204,37 +216,48 @@ export class CvService {
 
       const allCvs = result.documents.map((doc, index) => {
         const parsedDoc = JSON.parse(doc!);
+        const fileName = parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
+        const filePath = path.join(this.uploadFolder, fileName);
         return {
           realId: result.ids[index],
           indexId: index + 1,
-          name: parsedDoc.name,
-          email: parsedDoc.email,
+          name: parsedDoc.name || 'CV',
+          email: result.metadatas[index]!.uploadedBy,
           uploadDate: parsedDoc.uploadDate,
-          uploadedBy: result.metadatas[index]!.uploadedBy
-      }; 
+          uploadedBy: result.metadatas[index]!.uploadedBy,
+          filePath: fs.existsSync(filePath) ? filePath : null,
+          downloadUrl: `/cv/${result.ids[index]}`, // For frontend streaming
+        };
       });
-      
-    if (requesterRole == 'admin') {
-      return allCvs;
-    } else {
-      const userCvs = allCvs.filter(cv => {
-      console.log(`Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`);
-      return cv.uploadedBy === requesterEmail;
-    });
-    console.log(`Filtered User CVs: ${JSON.stringify(userCvs)}`);
-    return userCvs;
-  }
 
+      if (requesterRole === 'admin') {
+        return allCvs;
+      } else {
+        const userCvs = allCvs.filter((cv) => {
+          this.logger.debug(
+            `Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`,
+          );
+          return cv.uploadedBy === requesterEmail;
+        });
+        this.logger.debug(`Filtered User CVs: ${JSON.stringify(userCvs)}`);
+        return userCvs;
+      }
     } catch (error) {
       this.logger.error('List CVs failed', error.stack, error.message);
       throw error;
     }
   }
 
-  // basic chat
-  async chatCv(cvId: string, chatCvDto: ChatCvDto, requesterEmail: string, requesterRole: string): Promise<{ response: string }> {
+  async chatCv(
+    cvId: string,
+    chatCvDto: ChatCvDto,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<{ response: string }> {
     try {
-      this.logger.log(`Chat request for CV ${cvId} by ${requesterEmail} with role ${requesterRole}`);
+      this.logger.log(
+        `Chat request for CV ${cvId} by ${requesterEmail} with role ${requesterRole}`,
+      );
       const result = await this.cvCollection.get({ ids: [cvId] });
       if (result.ids.length === 0 || !result.documents[0]) {
         this.logger.warn(`CV ${cvId} not found`);
@@ -245,17 +268,25 @@ export class CvService {
       this.logger.debug(`CV document: ${JSON.stringify(cvDoc)}`);
 
       if (requesterRole !== 'admin') {
-        if (!cvDoc.assignedUserEmail || cvDoc.assignedUserEmail !== requesterEmail) {
-          this.logger.warn(`Unauthorized chat attempt by ${requesterEmail} for CV ${cvId}`);
-          throw new ForbiddenException('You are not authorized to chat with this CV');
+        if (
+          !cvDoc.assignedUserEmail ||
+          cvDoc.assignedUserEmail !== requesterEmail
+        ) {
+          this.logger.warn(
+            `Unauthorized chat attempt by ${requesterEmail} for CV ${cvId}`,
+          );
+          throw new ForbiddenException(
+            'You are not authorized to chat with this CV',
+          );
         }
       }
 
       const { message } = chatCvDto;
       this.logger.log(`Received message: ${message}`);
 
-      // Mock response (replace with OpenAI integration in Phase 2)
-      const response = `Mock response to "${message}" for CV ${cvId}. Skills: ${cvDoc.skills.join(', ')}.`;
+      const response = `Mock response to "${message}" for CV ${cvId}. Skills: ${cvDoc.skills.join(
+        ', ',
+      )}.`;
       this.logger.log(`Chat response: ${response}`);
 
       return { response };
@@ -264,5 +295,4 @@ export class CvService {
       throw error;
     }
   }
-
 }

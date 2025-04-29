@@ -8,8 +8,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./apps/backend:/app
-      - /app/node_modules
+      - ./apps/backend/Cvfiles:/app/Cvfiles
     depends_on:
       chromadb:
         condition: service_healthy
@@ -28,7 +27,8 @@ services:
       - PERSIST_DIRECTORY=/chroma/chroma
       - CHROMA_SERVER_DB=duckdb
     healthcheck:
-      test: [ "CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000" ]
+      test:
+        ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
       interval: 30s
       timeout: 15s
       retries: 50

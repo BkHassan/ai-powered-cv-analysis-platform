@@ -1,7 +1,7 @@
 import { ChromaClient } from 'chromadb';
-import { UploadCvDto } from './dto/upload-cv';
 import { ChatCvDto } from './dto/chat-cv.dto';
 import { ConfigService } from '@nestjs/config';
+import { Express } from 'express';
 export declare class CvService {
     private readonly chromaClient;
     private readonly configService;
@@ -9,10 +9,11 @@ export declare class CvService {
     private userCollection;
     private readonly logger;
     private readonly embeddingFunction;
+    private readonly uploadFolder;
     constructor(chromaClient: ChromaClient, configService: ConfigService);
     private initializeCollections;
     private generateCvId;
-    uploadCv(uploadCvDto: UploadCvDto, uploaderEmail: string): Promise<{
+    uploadCv(uploaderEmail: string, file: Express.Multer.File): Promise<{
         cvId: string;
     }>;
     getCv(cvId: string, requesterEmail: string, requesterRole: string): Promise<any>;
