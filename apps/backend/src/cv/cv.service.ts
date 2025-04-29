@@ -209,6 +209,42 @@ export class CvService {
     }
   }
 
+  async deleteCv(cvId: string): Promise<void> {
+    try {
+      this.logger.log(`Deleting CV ${cvId}`);
+  
+      // Check if CV exists
+      const result = await this.cvCollection.get({ ids: [cvId] });
+      this.logger.debug(`CV query result: ${JSON.stringify(result)}`);
+      if (result.ids.length === 0 || !result.documents[0]) {
+        this.logger.warn(`CV ${cvId} not found`);
+        throw new NotFoundException('CV not found');
+      }
+  
+      // Get file path from CV document
+      const cvDoc = JSON.parse(result.documents[0]);
+      const fileName = cvDoc.fileName || `${cvId}_cv.pdf`; // Fallback filename
+      const filePath = path.join(this.uploadFolder, fileName);
+      this.logger.debug(`Checking file at: ${filePath}`);
+  
+      // Delete file if it exists
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        this.logger.log(`Deleted CV file: ${filePath}`);
+      } else {
+        this.logger.warn(`CV file not found at: ${filePath}`);
+      }
+  
+      // Delete CV from collection
+      await this.cvCollection.delete({ ids: [cvId] });
+      this.logger.log(`${cvId} deleted from collection`);
+  
+    } catch (error) {
+      this.logger.error(`CV deletion failed for ${cvId}`, error.stack, error.message);
+      throw error;
+    }
+  }
+
   async listCvs(requesterRole: string, requesterEmail: string): Promise<any[]> {
     try {
       const result = await this.cvCollection.get();

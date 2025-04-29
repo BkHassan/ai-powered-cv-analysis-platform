@@ -11,6 +11,7 @@ import {
   Request,
   Logger,
   Res,
+  Delete,
 } from '@nestjs/common';
 import { CvService } from './cv.service';
 // import { UploadCvDto } from './dto/upload-cv';
@@ -19,8 +20,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Express, Response } from 'express';
 import * as fs from 'fs';
-
-
 
 @Controller('cv')
 @UseGuards(JwtAuthGuard)
@@ -67,6 +66,15 @@ export class CvController {
       'Content-Disposition': `inline; filename="${fileName}"`,
     });
     fs.createReadStream(filePath).pipe(res);
+  }
+
+  @Delete(':cvId')
+  async deleteCV(@Param('cvId') cvId: string, @Request() req: any) {
+    this.logger.log(
+      `Received delete request for CV ${cvId} from ${req.user.email}`,
+    );
+    await this.cvService.deleteCv(cvId);
+    return { message: `CV ${cvId} deleted successfully` };
   }
 
   @Get()

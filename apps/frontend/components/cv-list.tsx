@@ -5,69 +5,93 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Eye, MessageSquare, FileText } from "lucide-react"
+import { Eye, MessageSquare, FileText, Trash2, CheckCircle, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
-
-// Mock CV data
-// const mockCVs = [
-//   {
-//     id: "1",
-//     user: "john@example.com",
-//     filename: "john-doe-resume.pdf",
-//     uploadDate: "2023-05-15T10:30:00Z",
-//   },
-//   {
-//     id: "2",
-//     user: "jane@example.com",
-//     filename: "jane-smith-cv.pdf",
-//     uploadDate: "2023-06-22T14:45:00Z",
-//   },
-//   {
-//     id: "3",
-//     user: "alex@example.com",
-//     filename: "alex-johnson-resume.pdf",
-//     uploadDate: "2023-07-10T09:15:00Z",
-//   },
-//   {
-//     id: "4",
-//     user: "sarah@example.com",
-//     filename: "sarah-williams-cv.pdf",
-//     uploadDate: "2023-08-05T16:20:00Z",
-//   },
-//   {
-//     id: "5",
-//     user: "michael@example.com",
-//     filename: "michael-brown-resume.pdf",
-//     uploadDate: "2023-09-18T11:10:00Z",
-//   },
-// ]
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 export function CVList() {
   const [searchTerm, setSearchTerm] = useState("")
   const [cvs, setCvs] = useState<any[]>([])
+  const [status, setStatus] = useState<{ type: "success" | "error" | null; message: string }>({
+    type: null,
+    message: "",
+  })
 
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("token")
 
-  // fetch CVs
-  useEffect(() => {
-    const fetchCvs = async () => {
-      try {
-        const response = await fetch("http://localhost:3003/cv", {
-          headers: { 
-            Authorization: `Bearer ${token}`,
-          },
-        });
+  // Fetch CVs
+  const fetchCvs = async () => {
+    try {
+      const response = await fetch("http://localhost:3003/cv", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
 
-        const data = await response.json()
-        console.log(data)
-        setCvs(Array.isArray(data) ? data : [])
-      } catch (error) {
-        console.error("Error fetching CVs:", error)
+      if (!response.ok) {
+        throw new Error("Failed to fetch CVs")
       }
+
+      const data = await response.json()
+      setCvs(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error("Error fetching CVs:", error)
+      setStatus({ type: "error", message: "Failed to load CVs. Please try again." })
     }
-    fetchCvs()
-  }, [])
-  
+  }
+
+  useEffect(() => {
+    if (token) {
+      fetchCvs()
+    } else {
+      setStatus({ type: "error", message: "Please log in to view CVs" })
+    }
+  }, [token])
+
+  // Handle CV deletion
+  const handleDelete = async (cvId: string) => {
+    if (!token) {
+      setStatus({ type: "error", message: "Please log in to delete a CV" })
+      return
+    }
+
+    if (!confirm(`Are you sure you want to delete CV ${cvId}? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`http://localhost:3003/cv/${cvId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("CV not found")
+        } else if (response.status === 401 || response.status === 403) {
+          throw new Error("You are not authorized to delete this CV")
+        } else {
+          throw new Error("Failed to delete CV")
+        }
+      }
+
+      // Refresh CV list
+      await fetchCvs()
+      setStatus({ type: "success", message: `CV ${cvId} deleted successfully` })
+
+      // Clear status after 5 seconds
+      setTimeout(() => setStatus({ type: null, message: "" }), 5000)
+    } catch (error: any) {
+      console.error("Error deleting CV:", error)
+      setStatus({
+        type: "error",
+        message: error.message || "Failed to delete CV. Please try again.",
+      })
+    }
+  }
+
   // Filter CVs based on search term
   const filteredCVs = cvs.filter(
     (cv) =>
@@ -101,6 +125,14 @@ export function CVList() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="max-w-md"
           />
+
+          {status.type && (
+            <Alert variant={status.type === "success" ? "default" : "destructive"}>
+              {status.type === "success" ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+              <AlertTitle>{status.type === "success" ? "Success" : "Error"}</AlertTitle>
+              <AlertDescription>{status.message}</AlertDescription>
+            </Alert>
+          )}
 
           <div className="rounded-md border">
             <Table>
@@ -140,6 +172,14 @@ export function CVList() {
                               <MessageSquare className="h-4 w-4 mr-1" />
                               Chat
                             </Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(cv.realId)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
                           </Button>
                         </div>
                       </TableCell>

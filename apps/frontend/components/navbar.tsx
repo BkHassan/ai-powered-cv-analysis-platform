@@ -4,10 +4,12 @@ import { useState } from "react"
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
+
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-
+  
   return (
     <nav className="bg-gray-800 text-white p-4 fixed top-0 left-0 right-0 z-10">
       <div className="container mx-auto flex justify-between items-center">
@@ -37,6 +39,9 @@ export function Navbar() {
 }
 
 function NavLinks({ mobile = false, onClick = () => {} }) {
+  const router = useRouter()
+
+  
   const links = [
     { href: "/admin", label: "Home" },
     { href: "/admin/upload", label: "Upload CV" },
@@ -56,7 +61,9 @@ function NavLinks({ mobile = false, onClick = () => {} }) {
           {link.label}
         </Link>
       ))}
-      <Button variant="outline" size="sm" className="text-white border-white hover:bg-gray-700">
+      <Button variant="outline" size="sm" className="text-white border-white hover:bg-gray-700"
+      onClick={() => router.push("/")}
+      >
         Logout
       </Button>
     </>

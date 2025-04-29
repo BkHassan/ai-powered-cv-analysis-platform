@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +15,8 @@ export function UploadCV() {
     message: "",
   })
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const token = localStorage.getItem("token")
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null
@@ -41,27 +41,53 @@ export function UploadCV() {
       return
     }
 
+    if (!token) {
+      setStatus({ type: "error", message: "Please log in to upload a CV" })
+      return
+    }
+
     setUploading(true)
 
     try {
-      // Mock upload - in a real app, you would send the file to your API
-      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type)
-
-      // Simulate network delay
       const formData = new FormData()
       formData.append("file", file)
-      formData.append("name", "Jane")
-      formData.append("email", "jane@example.com")
 
-      setStatus({ type: "success", message: "CV uploaded successfully!" })
+      const response = await fetch("http://localhost:3003/cv/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        if (response.status === 400) {
+          const errorData = await response.json()
+          throw new Error(errorData.message || "Invalid file or duplicate CV")
+        } else if (response.status === 401 || response.status === 403) {
+          throw new Error("You are not authorized to upload a CV")
+        } else {
+          throw new Error("Failed to upload CV")
+        }
+      }
+
+      const data = await response.json()
+      setStatus({
+        type: "success",
+        message: `CV uploaded successfully! CV ID: ${data.cvId}`,
+      })
       setFile(null)
 
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
-    } catch (error) {
-      setStatus({ type: "error", message: "Failed to upload CV. Please try again." })
+    } catch (error: any) {
+      console.error("Error uploading CV:", error)
+      setStatus({
+        type: "error",
+        message: error.message || "Failed to upload CV. Please try again.",
+      })
     } finally {
       setUploading(false)
     }
