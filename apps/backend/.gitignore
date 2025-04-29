@@ -5,6 +5,7 @@ out/
 *.js
 *.js.map
 *.d.ts
+Cvfiles/
 
 # Logs
 *.log
