@@ -1,88 +1,106 @@
-"use client"
+"use client";
 
-import type React from "react"
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MessageSquare, Send, User } from "lucide-react";
 
-import { useState, useRef, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MessageSquare, Send, User } from "lucide-react"
+interface CV {
+  realId: string;
+  name: string;
+  email: string;
+  fileName: string;
+}
 
-// Mock CV data
-const mockCVs = [
-  { id: "1", user: "john@example.com", filename: "john-doe-resume.pdf" },
-  { id: "2", user: "jane@example.com", filename: "jane-smith-cv.pdf" },
-  { id: "3", user: "alex@example.com", filename: "alex-johnson-resume.pdf" },
-]
-
-// Mock initial chat for each CV
-const mockInitialChats: Record<string, { role: "user" | "assistant"; content: string }[]> = {
-  "1": [{ role: "assistant", content: "I've analyzed John's CV. What would you like to know?" }],
-  "2": [{ role: "assistant", content: "I've analyzed Jane's CV. What would you like to know?" }],
-  "3": [{ role: "assistant", content: "I've analyzed Alex's CV. What would you like to know?" }],
+interface Message {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export function ChatWithCV({ initialCvId = "" }) {
-  const [selectedCV, setSelectedCV] = useState<string>(initialCvId)
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [cvs, setCvs] = useState<CV[]>([]);
+  const [selectedCV, setSelectedCV] = useState<string>(initialCvId);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load initial chat when CV is selected
+  // Fetch CV list
   useEffect(() => {
-    if (selectedCV) {
-      setMessages(mockInitialChats[selectedCV] || [])
-    } else {
-      setMessages([])
-    }
-  }, [selectedCV])
+    const fetchCvs = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await fetch("http://localhost:3003/cv", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) throw new Error("Failed to fetch CVs");
+        const data = await response.json();
+        console.log("fetched CVs:", data);
+        setCvs(data);
+        if (initialCvId && data.some((cv: CV) => cv.realId === initialCvId)) {
+          setSelectedCV(initialCvId);
+          setMessages([{ role: "assistant", content: 'How can i help you' }]);
+        }
+      } catch (error) {
+        console.error("Error fetching CVs:", error);
+      }
+    };
+    fetchCvs();
+  }, [initialCvId]);
 
-  // Scroll to bottom of chat when messages change
+  // Scroll to bottom of chat
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
+    if (!input.trim() || !selectedCV) return;
+    console.log("Selected CV ID:", selectedCV);
 
-    if (!input.trim() || !selectedCV) return
-
-    const userMessage = { role: "user" as const, content: input }
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
+    const userMessage: Message = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
 
     try {
-      // Simulate AI response delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // Mock AI response based on user input
-      let aiResponse = "I'm analyzing the CV to answer your question."
-
-      if (input.toLowerCase().includes("experience")) {
-        aiResponse = "Based on the CV, they have 5 years of experience in software development."
-      } else if (input.toLowerCase().includes("education")) {
-        aiResponse = "They have a Bachelor's degree in Computer Science from a top university."
-      } else if (input.toLowerCase().includes("skills")) {
-        aiResponse = "Their key skills include JavaScript, React, Node.js, and Python."
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:3003/cv/${selectedCV}/chat`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: input }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Response error:", response.status, text);
+        throw new Error(response.status === 404 ? "CV not found" : "Failed to send message");
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", content: aiResponse }])
+      const data = await response.json();
+      console.log("CHatbot response:", data);
+
+      setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     } catch (error) {
-      console.error("Error sending message:", error)
+      console.error("Error sending message:", error);
+      let errorMessage = " An unknown error occured.";
+      if (error instanceof Error){
+        errorMessage = error.message;
+      }
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, I encountered an error while processing your request.",
-        },
-      ])
+        { role: "assistant", content: `Error: ${errorMessage}` },
+      ]);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Card className="w-full">
@@ -94,14 +112,18 @@ export function ChatWithCV({ initialCvId = "" }) {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <Select value={selectedCV} onValueChange={setSelectedCV}>
+          <Select value={selectedCV} onValueChange={(value) => {
+            console.log("User selected CV:", value);
+            setSelectedCV(value);
+            setMessages([{ role: "assistant", content: 'How can i help you'}]);
+          }}>
             <SelectTrigger>
               <SelectValue placeholder="Select a CV" />
             </SelectTrigger>
             <SelectContent>
-              {mockCVs.map((cv) => (
-                <SelectItem key={cv.id} value={cv.id}>
-                  {cv.filename} ({cv.user})
+              {cvs.map((cv) => (
+                <SelectItem key={cv.realId} value={cv.realId}>
+                  {cv.fileName} {cv.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -161,5 +183,5 @@ export function ChatWithCV({ initialCvId = "" }) {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Eye, MessageSquare, FileText, Trash2, CheckCircle, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useSearchParams } from "next/navigation"
 
 export function CVList() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -17,6 +18,8 @@ export function CVList() {
     message: "",
   })
 
+  const searchParams = useSearchParams();
+  const refresh = searchParams.get("refresh");
   const token = localStorage.getItem("token")
 
   // Fetch CVs
@@ -46,7 +49,7 @@ export function CVList() {
     } else {
       setStatus({ type: "error", message: "Please log in to view CVs" })
     }
-  }, [token])
+  }, [token, refresh])
 
   // Handle CV deletion
   const handleDelete = async (cvId: string) => {

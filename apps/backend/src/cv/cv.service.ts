@@ -14,6 +14,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Express } from 'express';
 import pdfParse = require('pdf-parse');
+import { ChatOpenAI } from '@langchain/openai';
+import { PromptTemplate } from "@langchain/core/prompts";
+import { RunnableSequence, RunnablePassthrough } from "@langchain/core/runnables";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+
+
+
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -93,11 +100,12 @@ export class CvService {
   private async generateCvId(): Promise<string> {
     try {
       const result = await this.cvCollection.get();
-      const count = result.ids.length + 1;
+      const mainCvCount = result.ids.filter(id => !id.includes('_chunk_')).length;
+      const newId = `cv${mainCvCount + 1}`;
       this.logger.debug(
-        `Generating CV ID: cv${count} (existing CVs: ${result.ids.length})`,
+        `Generating CV ID: ${newId} (main CVs: ${mainCvCount}, total records: ${result.ids.length})`,
       );
-      return `cv${count}`;
+      return newId;
     } catch (error) {
       this.logger.error('Failed to generate CV ID', error.stack, error.message);
       throw new Error('CV ID generation failed');
@@ -308,6 +316,15 @@ export class CvService {
       await this.cvCollection.delete({ ids: [cvId] });
       this.logger.log(`${cvId} deleted from collection`);
   
+          // Delete associated chunks
+    const chunkResult = await this.cvCollection.get({ where: { cvId } });
+    if (chunkResult.ids.length > 0) {
+      await this.cvCollection.delete({ ids: chunkResult.ids });
+      this.logger.log(`Deleted ${chunkResult.ids.length} chunks for CV ${cvId}`);
+    } else {
+      this.logger.debug(`No chunks found for CV ${cvId}`);
+}
+
     } catch (error) {
       this.logger.error(`CV deletion failed for ${cvId}`, error.stack, error.message);
       throw error;
@@ -318,27 +335,33 @@ export class CvService {
     try {
       const result = await this.cvCollection.get();
       this.logger.log(`Retrieved ${result.ids.length} CVs`);
-
-      const allCvs = result.documents.map((doc, index) => {
-        const parsedDoc = JSON.parse(doc!);
-        const fileName = parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
-        const filePath = path.join(this.uploadFolder, fileName);
-        return {
-          realId: result.ids[index],
-          indexId: index + 1,
-          name: parsedDoc.name || 'CV',
-          email: result.metadatas[index]!.uploadedBy,
-          uploadDate: parsedDoc.uploadDate,
-          uploadedBy: result.metadatas[index]!.uploadedBy,
-          filePath: fs.existsSync(filePath) ? filePath : null,
-          downloadUrl: `/cv/${result.ids[index]}`, // For frontend streaming
-        };
-      });
-
+  
+      // Filter main CV records (exclude chunks)
+      const mainCvs = result.documents
+        .map((doc, index) => {
+          if (result.ids[index].includes('_chunk_')) return null; // Skip chunks
+          const parsedDoc = JSON.parse(doc!);
+          const fileName = parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
+          const filePath = path.join(this.uploadFolder, fileName);
+          return {
+            realId: result.ids[index],
+            indexId: index + 1,
+            name: parsedDoc.name || 'CV',
+            email: result.metadatas[index]!.uploadedBy,
+            uploadDate: parsedDoc.uploadDate,
+            uploadedBy: result.metadatas[index]!.uploadedBy,
+            filePath: fs.existsSync(filePath) ? filePath : null,
+            downloadUrl: `/cv/${result.ids[index]}`, // For frontend streaming
+          };
+        })
+        .filter(cv => cv !== null); // Remove null entries (chunks)
+  
+      this.logger.log(`Filtered ${mainCvs.length} main CVs`);
+  
       if (requesterRole === 'admin') {
-        return allCvs;
+        return mainCvs;
       } else {
-        const userCvs = allCvs.filter((cv) => {
+        const userCvs = mainCvs.filter((cv) => {
           this.logger.debug(
             `Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`,
           );
@@ -363,37 +386,84 @@ export class CvService {
       this.logger.log(
         `Chat request for CV ${cvId} by ${requesterEmail} with role ${requesterRole}`,
       );
-      const result = await this.cvCollection.get({ ids: [cvId] });
+  
+      // Verify CV exists
+      const result = await this.cvCollection.get({ where: { cvId } });
       if (result.ids.length === 0 || !result.documents[0]) {
         this.logger.warn(`CV ${cvId} not found`);
         throw new NotFoundException('CV not found');
       }
-
-      const cvDoc = JSON.parse(result.documents[0]);
-      this.logger.debug(`CV document: ${JSON.stringify(cvDoc)}`);
-
-      if (requesterRole !== 'admin') {
-        if (
-          !cvDoc.assignedUserEmail ||
-          cvDoc.assignedUserEmail !== requesterEmail
-        ) {
-          this.logger.warn(
-            `Unauthorized chat attempt by ${requesterEmail} for CV ${cvId}`,
-          );
-          throw new ForbiddenException(
-            'You are not authorized to chat with this CV',
-          );
-        }
-      }
-
+      this.logger.debug(`Retrieved ${result.ids.length} chunks for CV ${cvId}`);
+  
       const { message } = chatCvDto;
       this.logger.log(`Received message: ${message}`);
-
-      const response = `Mock response to "${message}" for CV ${cvId}. Skills: ${cvDoc.skills.join(
-        ', ',
-      )}.`;
+  
+      // Convert query to embedding
+      const queryEmbedding = (await this.embeddingFunction.generate([message]))[0];
+      this.logger.log(`Generated query embedding for: ${message}`);
+  
+      // Perform vector similarity search
+      const queryResult = await this.cvCollection.query({
+        queryEmbeddings: [queryEmbedding],
+        nResults: 5,
+        where: { cvId }, // Restrict to chunks of this CV
+      });
+      this.logger.debug(`Query result: ${JSON.stringify(queryResult)}`);
+  
+      // Format retrieved chunks
+      const context = queryResult.documents[0]
+        .map((doc, index) => {
+          const parsedDoc = JSON.parse(doc!);
+          return `Chunk ${parsedDoc.chunkIndex}:\n${parsedDoc.text}`;
+        })
+        .join('\n\n');
+      this.logger.log(`Formatted context length: ${context.length} characters`);
+  
+      if (!context) {
+        this.logger.warn(`No relevant chunks found for CV ${cvId}`);
+        return { response: 'No relevant information found in the CV.' };
+      }
+  
+      // Initialize Open AI
+      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
+      if (!openaiApiKey) {
+        this.logger.error('OPENAI_API_KEY is not defined in .env');
+        throw new Error('OPENAI_API_KEY is required');
+      }
+  
+      const llm = new ChatOpenAI({
+        openAIApiKey: openaiApiKey,
+        modelName: 'gpt-4o-mini',
+        temperature: 0.7,
+      });
+  
+      // Create prompt template
+      const promptTemplate = PromptTemplate.fromTemplate(`
+        You are an AI assistant answering questions about a candidate's CV. Use the following CV content to provide an accurate and concise response. If the information is not available, state so clearly.
+  
+        CV Content:
+        {context}
+  
+        User Question: {question}
+  
+        Response:
+      `);
+  
+      // Create RAG chain
+      const chain = RunnableSequence.from([
+        {
+          context: () => context,
+          question: new RunnablePassthrough(),
+        },
+        promptTemplate,
+        llm,
+        new StringOutputParser(),
+      ]);
+  
+      // Generate response
+      const response = await chain.invoke(message);
       this.logger.log(`Chat response: ${response}`);
-
+  
       return { response };
     } catch (error) {
       this.logger.error('Chat CV failed', error.stack, error.message);
