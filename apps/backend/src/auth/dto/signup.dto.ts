@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsEnum, MinLength } from 'class-validator';
+import { IsString, Matches, IsNotEmpty, IsEmail, IsEnum, MinLength } from 'class-validator';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -6,16 +6,21 @@ export enum UserRole {
 }
 
 export class SignupDto {
-  @IsString()
-  name: string;
+  @IsNotEmpty({ message: 'First name is required' })
+  @IsString({ message: 'First name must be a string' })
+  firstName: string;
+
+  @IsNotEmpty({ message: 'Last name is required' })
+  @IsString({ message: 'Last name must be a string' })
+  lastName: string;
 
   @IsEmail()
   email: string;
 
-  @IsString()
-  @MinLength(6)
+  @IsNotEmpty({ message: 'Password is required' })
+  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, {
+    message:
+      'Password must be at least 8 characters long, contain one uppercase letter, one number, and one special character',
+  })
   password: string;
-
-  @IsEnum(UserRole)
-  role: UserRole;
 }

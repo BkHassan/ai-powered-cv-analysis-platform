@@ -37,7 +37,7 @@ export default function AuthPage() {
 
 
           {isLogin ? (
-            <LoginForm />
+            <LoginForm onUserNotFound={() => setIsLogin(false)} />
           ) : (
             <SignupForm onSignupSuccess={() => setIsLogin(true)} />
           )}

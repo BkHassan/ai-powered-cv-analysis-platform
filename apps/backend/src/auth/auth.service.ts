@@ -1,4 +1,12 @@
-import { Injectable, ConflictException, UnauthorizedException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  ConflictException,
+  UnauthorizedException,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -26,7 +34,9 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
 
   async generate(texts: string[]): Promise<number[][]> {
     try {
-      const model = this.client.getGenerativeModel({ model: 'text-embedding-004' });
+      const model = this.client.getGenerativeModel({
+        model: 'text-embedding-004',
+      });
       const embeddings: number[][] = [];
       for (const text of texts) {
         const result = await model.embedContent(text);
@@ -36,14 +46,18 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
       this.logger.log(`Generated embeddings for ${texts.length} texts`);
       return embeddings;
     } catch (error) {
-      this.logger.error('Failed to generate embeddings', error.stack, error.message);
+      this.logger.error(
+        'Failed to generate embeddings',
+        error.stack,
+        error.message,
+      );
       throw new Error('Gemini embedding generation failed');
     }
   }
 }
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private userCollection: Collection;
   private resetTokenCollection: Collection;
   private readonly logger = new Logger(AuthService.name);
@@ -55,7 +69,6 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {
     this.embeddingFunction = new GeminiEmbeddingFunction(configService);
-    this.initializeCollections();
   }
 
   private async initializeCollections() {
@@ -64,19 +77,123 @@ export class AuthService {
         name: 'users',
         embeddingFunction: this.embeddingFunction,
       });
-      this.resetTokenCollection = await this.chromaClient.getOrCreateCollection({
-        name: 'reset_tokens',
-        embeddingFunction: this.embeddingFunction,
-      });
+      this.resetTokenCollection = await this.chromaClient.getOrCreateCollection(
+        {
+          name: 'reset_tokens',
+          embeddingFunction: this.embeddingFunction,
+        },
+      );
       this.logger.log('ChromaDB collections initialized successfully');
     } catch (error) {
-      this.logger.error('Failed to initialize ChromaDB collections', error.stack, error.message);
+      this.logger.error(
+        'Failed to initialize ChromaDB collections',
+        error.stack,
+        error.message,
+      );
       throw new Error('ChromaDB initialization failed');
     }
   }
 
+  async onModuleInit() {
+    try {
+      await this.initializeCollections();
+      await this.ensureAdminUser();
+    } catch (error) {
+      this.logger.error(
+        'Failed to ensure admin user on startup',
+        error.stack,
+        error.message,
+      );
+      throw error; // Let NestJS handle startup failure
+    }
+  }
+
+  private async ensureAdminUser() {
+    try {
+      this.logger.log('Checking for admin user in ChromaDB');
+
+      // Query for admin users
+      const result = await this.userCollection.get();
+      const adminExists = result.documents.some((doc) => {
+        if (!doc) return false;
+        const userDoc = JSON.parse(doc);
+        return userDoc.role === 'admin';
+      });
+
+      if (adminExists) {
+        this.logger.log('Admin user already exists');
+        return;
+      }
+
+      this.logger.log('No admin user found, creating one');
+
+      // Load admin credentials from .env
+      const email = this.configService.get<string>('ADMIN_EMAIL');
+      const password = this.configService.get<string>('ADMIN_PASSWORD');
+      const firstName = this.configService.get<string>('ADMIN_FIRST_NAME');
+      const lastName = this.configService.get<string>('ADMIN_LAST_NAME');
+
+      if (!email || !password || !firstName || !lastName) {
+        this.logger.error('Missing admin credentials in .env');
+        throw new Error(
+          'ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_FIRST_NAME, and ADMIN_LAST_NAME must be defined in .env',
+        );
+      }
+
+      // Check for email conflict
+      const existingUser = await this.userCollection.get({
+        where: { email },
+      });
+      if (existingUser.ids.length > 0) {
+        this.logger.warn(`Email ${email} already exists, cannot create admin`);
+        throw new ConflictException(`Admin email ${email} is already in use`);
+      }
+
+      // Validate password strength (consistent with signup)
+      const passwordPattern =
+        /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+      if (!passwordPattern.test(password)) {
+        this.logger.error('Admin password does not meet strength requirements');
+        throw new BadRequestException(
+          'Admin password must be at least 8 characters long, contain one uppercase letter, one number, and one special character',
+        );
+      }
+
+      // Hash password
+      this.logger.log('Hashing admin password');
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create admin user
+      const userId = `admin_${uuidv4()}`;
+      const name = `${firstName} ${lastName}`;
+      const userDocument = JSON.stringify({
+        name,
+        email,
+        password: hashedPassword,
+        cv_id: [],
+        role: 'admin',
+      });
+
+      this.logger.log('Storing admin user in ChromaDB');
+      await this.userCollection.add({
+        ids: [userId],
+        documents: [userDocument],
+        metadatas: [{ email }],
+      });
+
+      this.logger.log(`Admin user created successfully: ${userId}`);
+    } catch (error) {
+      this.logger.error(
+        'Failed to ensure admin user',
+        error.stack,
+        error.message,
+      );
+      throw error;
+    }
+  }
+
   async signup(signupDto: SignupDto): Promise<{ accessToken: string }> {
-    const { name, email, password, role } = signupDto;
+    const { firstName, lastName, email, password } = signupDto;
 
     try {
       this.logger.log(`Checking for existing user with email: ${email}`);
@@ -87,12 +204,41 @@ export class AuthService {
         throw new ConflictException('Email already exists');
       }
 
+      // Validate firstName and lastName
+      const trimmedFirstName = firstName.trim();
+      const trimmedLastName = lastName.trim();
+      if (!trimmedFirstName || !trimmedLastName) {
+        throw new BadRequestException(
+          'First name and last name cannot be empty',
+        );
+      }
+
+      // Combine firstName and lastName into name
+      const name = `${trimmedFirstName} ${trimmedLastName}`;
+
+      //validate password strength
+      const passwordPattern =
+        /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+      if (!passwordPattern.test(password)) {
+        throw new BadRequestException(
+          'Password must be at least 8 characters long, contain one uppercase letter, one number, and one special character',
+        );
+      }
+
       this.logger.log('Hashing password');
       const hashedPassword = await bcrypt.hash(password, 10);
 
       this.logger.log('Storing user in ChromaDB');
       const userId = `user_${uuidv4()}`;
-      const userDocument = JSON.stringify({ name, email, role, password: hashedPassword, cv_id: [] });
+      const userDocument = JSON.stringify({
+        name,
+        email,
+        password: hashedPassword,
+        cv_id: [],
+        role: 'user',
+      });
+
+      //save the user data
       await this.userCollection.add({
         ids: [userId],
         documents: [userDocument],
@@ -101,7 +247,7 @@ export class AuthService {
       this.logger.log(`User stored successfully: ${userId}`);
 
       this.logger.log('Generating JWT');
-      const payload = { sub: userId, email, role };
+      const payload = { sub: userId, email };
       const accessToken = this.jwtService.sign(payload);
 
       return { accessToken };
@@ -143,7 +289,9 @@ export class AuthService {
     }
   }
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ resetToken: string }> {
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ resetToken: string }> {
     const { email } = forgotPasswordDto;
 
     try {

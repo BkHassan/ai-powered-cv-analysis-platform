@@ -9,13 +9,15 @@ import { Label } from "@/components/ui/label"
 import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react"
 
 
-export function LoginForm() {
+export function LoginForm({ onUserNotFound }: {onUserNotFound: () => void}) {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
+    setErrorMessage("")
 
     const formData = {
       email: (e.currentTarget.elements.namedItem("email") as HTMLInputElement)
@@ -35,8 +37,19 @@ export function LoginForm() {
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        // throw new Error("Login failed");
+        const errorData = await response.json();
+
+
+      if (response.status === 404 || errorData.message === "User not found") {
+        setErrorMessage("No account found with this email. would you like to sing up?");
+        return;
+      } else {
+        setErrorMessage("Login failed. please check your credentials or Signup.");
+        return;
       }
+    }
+    
 
       const data = await response.json();
       console.log("Login success:", data);
@@ -49,6 +62,7 @@ export function LoginForm() {
 
     } catch (error) {
       console.error("Error:", error);
+      setErrorMessage("An unexpected error occrred. please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -87,6 +101,21 @@ export function LoginForm() {
           </Button>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="text-sm text-red-600">
+          {errorMessage}{" "}
+          {errorMessage.includes("No account") && (
+            <button
+              type="button"
+              onClick={onUserNotFound}
+              className="ml-2 underline text-blue-600 hover:text-blue-800"
+            >
+              Sign up
+            </button>
+          )}
+        </div>
+      )}  
 
       <div className="flex justify-end">
         <button type="button" className="text-sm text-primary hover:underline">
