@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertCircle, CheckCircle, Upload } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useRouter } from "next/router"
 
 export function UploadCV() {
   const [file, setFile] = useState<File | null>(null)

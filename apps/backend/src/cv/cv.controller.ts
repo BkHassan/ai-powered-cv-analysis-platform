@@ -92,6 +92,10 @@ export class CvController {
     @Request() req,
   ) {
     this.logger.log(`Chat CV ${cvId} request by ${req.user.email}`);
+    if (!chatCvDto.message) {
+      this.logger.warn('Missing message in chatCvDto');
+      throw new BadRequestException('Message is required');
+    }
     return this.cvService.chatCv(
       cvId,
       chatCvDto,
@@ -100,3 +104,4 @@ export class CvController {
     );
   }
 }
+
