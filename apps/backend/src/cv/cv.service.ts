@@ -337,6 +337,7 @@ export class CvService {
       this.logger.log(`Retrieved ${result.ids.length} CVs`);
   
       // Filter main CV records (exclude chunks)
+      let mainCvCounter = 0;
       const mainCvs = result.documents
         .map((doc, index) => {
           if (result.ids[index].includes('_chunk_')) return null; // Skip chunks
@@ -345,7 +346,7 @@ export class CvService {
           const filePath = path.join(this.uploadFolder, fileName);
           return {
             realId: result.ids[index],
-            indexId: index + 1,
+            indexId: ++mainCvCounter,
             name: parsedDoc.name || 'CV',
             email: result.metadatas[index]!.uploadedBy,
             uploadDate: parsedDoc.uploadDate,
