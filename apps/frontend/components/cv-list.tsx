@@ -9,7 +9,11 @@ import { Eye, MessageSquare, FileText, Trash2, CheckCircle, AlertCircle } from "
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-export function CVList() {
+interface CVListProps {
+  refreshKey?: number;
+}
+
+export function CVList({ refreshKey = 0 }: CVListProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [cvs, setCvs] = useState<any[]>([])
   const [status, setStatus] = useState<{ type: "success" | "error" | null; message: string }>({
@@ -46,7 +50,7 @@ export function CVList() {
     } else {
       setStatus({ type: "error", message: "Please log in to view CVs" })
     }
-  }, [token])
+  }, [token, refreshKey])
 
   // Handle CV deletion
   const handleDelete = async (cvId: string) => {
@@ -112,13 +116,13 @@ export function CVList() {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle className="text-xl flex items-center gap-2">
-          <FileText size={20} />
+        <CardTitle className="text-2xl flex items-center gap-2">
+          <FileText size={24} />
           CV List
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
+        <div className="space-y-6">
           <Input
             placeholder="Search by email or name..."
             value={searchTerm}
@@ -128,7 +132,7 @@ export function CVList() {
 
           {status.type && (
             <Alert variant={status.type === "success" ? "default" : "destructive"}>
-              {status.type === "success" ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+              {status.type === "success" ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
               <AlertTitle>{status.type === "success" ? "Success" : "Error"}</AlertTitle>
               <AlertDescription>{status.message}</AlertDescription>
             </Alert>
@@ -155,21 +159,31 @@ export function CVList() {
                 ) : (
                   filteredCVs.map((cv) => (
                     <TableRow key={cv.realId}>
-                      <TableCell className="font-medium">{cv.indexId}</TableCell>
+                      <TableCell>{cv.indexId}</TableCell>
                       <TableCell>{cv.name}</TableCell>
                       <TableCell>{cv.email}</TableCell>
                       <TableCell>{formatDate(cv.uploadDate)}</TableCell>
                       <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="outline" size="sm" asChild>
+                        <div className="flex space-x-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="hover:bg-purple-500 hover:text-white"
+                            asChild
+                          >
                             <Link href={`/admin/cvs/${cv.realId}`}>
-                              <Eye className="h-4 w-4 mr-1" />
+                              <Eye className="h-5 w-5 mr-1" />
                               View
                             </Link>
                           </Button>
-                          <Button variant="outline" size="sm" asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="hover:bg-green-500 hover:text-white"
+                            asChild
+                          >
                             <Link href={`/admin/chat?cvId=${cv.realId}`}>
-                              <MessageSquare className="h-4 w-4 mr-1" />
+                              <MessageSquare className="h-5 w-5 mr-1" />
                               Chat
                             </Link>
                           </Button>
@@ -177,8 +191,9 @@ export function CVList() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleDelete(cv.realId)}
+                            className="hover:bg-red-500 hover:text-white"
                           >
-                            <Trash2 className="h-4 w-4 mr-1" />
+                            <Trash2 className="h-5 w-5 mr-1" />
                             Delete
                           </Button>
                         </div>
