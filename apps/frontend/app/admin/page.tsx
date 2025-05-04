@@ -1,18 +1,22 @@
-'use client'
+"use client";
 
-import { Navbar } from "@/components/navbar"
-import { UploadCV } from "@/components/upload-cv"
-import { ChatWithCV } from "@/components/chat-with-cv"
-import { CVList } from "@/components/cv-list"
+import { Navbar } from "@/components/navbar";
+import { UploadCV } from "@/components/upload-cv";
+import { ChatWithCV } from "@/components/chat-with-cv";
+import { CVList } from "@/components/cv-list";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleUploadSuccess = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
 
   useEffect(() => {
-    //example: check if token exist in localStorage
     const token = localStorage.getItem("token");
     if (!token) {
       router.replace("/");
@@ -22,31 +26,41 @@ export default function AdminDashboard() {
     }
   }, [router]);
 
-    if (isCheckingAuth)  {
-      return <div>Loading...</div>;
-    }
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-purple-100 to-pink-100">
+        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50">
       <Navbar />
 
       <main className="container mx-auto pt-24 pb-10 px-4">
-        <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+        <h1 className="text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
+          Powering Your Hiring Process
+        </h1>
+        <h3 className="mb-10 text-center text-gray-600">
+          Welcome back to your dashboard
+        </h3>
 
-        <div className="grid gap-8">
-          <section>
-            <UploadCV />
+        <div className="grid gap-10">
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-6">
+              <UploadCV onUploadSuccess={handleUploadSuccess} />
+            </div>
+            <div className="p-6">
+              <ChatWithCV showInstructions={true} />
+            </div>
           </section>
 
-          <section>
-            <ChatWithCV />
-          </section>
-
-          <section>
-            <CVList />
+          <section className="p-6">
+            <CVList refreshKey={refreshKey} />
           </section>
         </div>
       </main>
     </div>
-  )
+  );
 }

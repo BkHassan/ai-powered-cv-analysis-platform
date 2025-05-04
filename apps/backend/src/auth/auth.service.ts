@@ -47,8 +47,8 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
       return embeddings;
     } catch (error) {
       this.logger.error(
-        'Failed to generate embeddings',
-        error.stack,
+        `Failed to generate embeddings',
+        ${error.message}`,
         error.message,
       );
       throw new Error('Gemini embedding generation failed');
@@ -86,8 +86,8 @@ export class AuthService implements OnModuleInit {
       this.logger.log('ChromaDB collections initialized successfully');
     } catch (error) {
       this.logger.error(
-        'Failed to initialize ChromaDB collections',
-        error.stack,
+        `Failed to initialize ChromaDB collections',
+        ${error.message}`,
         error.message,
       );
       throw new Error('ChromaDB initialization failed');
@@ -100,8 +100,8 @@ export class AuthService implements OnModuleInit {
       await this.ensureAdminUser();
     } catch (error) {
       this.logger.error(
-        'Failed to ensure admin user on startup',
-        error.stack,
+        `Failed to ensure admin user on startup',
+        ${error.message}`,
         error.message,
       );
       throw error; // Let NestJS handle startup failure
@@ -184,8 +184,8 @@ export class AuthService implements OnModuleInit {
       this.logger.log(`Admin user created successfully: ${userId}`);
     } catch (error) {
       this.logger.error(
-        'Failed to ensure admin user',
-        error.stack,
+        `Failed to ensure admin user',
+        ${error.message}`,
         error.message,
       );
       throw error;
@@ -252,7 +252,7 @@ export class AuthService implements OnModuleInit {
 
       return { accessToken };
     } catch (error) {
-      this.logger.error('Signup failed', error.stack, error.message);
+      this.logger.error(`Signup failed', ${error.message}`, error.message);
       throw error;
     }
   }
@@ -267,7 +267,7 @@ export class AuthService implements OnModuleInit {
       });
 
       if (result.ids.length === 0 || !result.documents[0]) {
-        throw new UnauthorizedException('Invalid credentials');
+        throw new UnauthorizedException('User not found');
       }
 
       const userDoc = JSON.parse(result.documents[0]);
@@ -275,7 +275,7 @@ export class AuthService implements OnModuleInit {
       const isPasswordValid = await bcrypt.compare(password, userDoc.password);
 
       if (!isPasswordValid) {
-        throw new UnauthorizedException('Invalid credentials');
+        throw new UnauthorizedException('Incorrect password');
       }
 
       this.logger.log('Generating JWT for login');
@@ -284,7 +284,7 @@ export class AuthService implements OnModuleInit {
 
       return { accessToken };
     } catch (error) {
-      this.logger.error('Login failed', error.stack, error.message);
+      this.logger.error(`Login failed', ${error.message}`, error.message);
       throw error;
     }
   }
@@ -319,7 +319,7 @@ export class AuthService implements OnModuleInit {
       this.logger.log(`Reset token generated: ${resetToken}`);
       return { resetToken }; // For MVP, return token (no SendGrid)
     } catch (error) {
-      this.logger.error('Forgot password failed', error.stack, error.message);
+      this.logger.error(`Forgot password failed', ${error.message}`, error.message);
       throw error;
     }
   }
@@ -372,7 +372,7 @@ export class AuthService implements OnModuleInit {
 
       this.logger.log('Password reset successfully');
     } catch (error) {
-      this.logger.error('Reset password failed', error.stack, error.message);
+      this.logger.error(`Reset password failed', ${error.message}`, error.message);
       throw error;
     }
   }

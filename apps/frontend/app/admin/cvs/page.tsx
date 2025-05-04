@@ -1,5 +1,5 @@
-import { Navbar } from "@/components/navbar"
-import { CVList } from "@/components/cv-list"
+import { Navbar } from "@/components/navbar";
+import { CVList } from "@/components/cv-list";
 
 export default function CVListPage() {
   return (
@@ -12,5 +12,5 @@ export default function CVListPage() {
         <CVList />
       </main>
     </div>
-  )
+  );
 }

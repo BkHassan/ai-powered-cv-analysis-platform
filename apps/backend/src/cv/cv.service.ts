@@ -73,6 +73,7 @@ export class CvService {
     private readonly configService: ConfigService,
   ) {
     this.embeddingFunction = new GeminiEmbeddingFunction(configService);
+    this.chromaClient = new ChromaClient({ path: 'http://chromadb:8000' });
     this.initializeCollections();
   }
 
