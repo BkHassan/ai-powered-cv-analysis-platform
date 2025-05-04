@@ -1,86 +1,96 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { use } from "react"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { ArrowLeft, Download, MessageSquare } from "lucide-react"
-import Link from "next/link"
+import { useState, useEffect } from "react";
+import { use } from "react";
+import { useRouter } from "next/navigation";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, Download, MessageSquare } from "lucide-react";
+import Link from "next/link";
 
 export default function CVDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params) // Unwrap params with React.use
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [fileName, setFileName] = useState<string>("")
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { id } = use(params);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const router = useRouter();
 
-  const token = localStorage.getItem("token")
+  useEffect(() => {
+    setToken(localStorage.getItem("token"));
+  }, []);
 
   useEffect(() => {
     const fetchCV = async () => {
-      setLoading(true)
-      setError(null)
+      if (!token) {
+        setError("Please log in to view the CV");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
       try {
-        const response = await fetch(`http://localhost:3003/cv/${id}`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv/${id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        })
+        });
 
         if (!response.ok) {
           if (response.status === 404) {
-            throw new Error("CV not found")
-          } else if (response.status === 403) {
-            throw new Error("You are not authorized to view this CV")
+            throw new Error("CV not found");
+          } else if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("token");
+            router.push("/login");
+            throw new Error("Session expired or unauthorized. Please log in again.");
           } else {
-            throw new Error("Failed to load CV")
+            throw new Error("Failed to load CV");
           }
         }
 
         // Extract filename from Content-Disposition header
-        const contentDisposition = response.headers.get("content-disposition")
-        const match = contentDisposition?.match(/filename="(.+)"/)
-        const extractedFileName = match ? match[1] : `cv-${id}.pdf`
-        setFileName(extractedFileName)
+        const contentDisposition = response.headers.get("content-disposition");
+        const match = contentDisposition?.match(/filename="(.+)"/);
+        const extractedFileName = match ? match[1] : `cv-${id}.pdf`;
+        setFileName(extractedFileName);
 
         // Create Blob from response body
-        const pdfBlob = await response.blob()
-        const url = window.URL.createObjectURL(pdfBlob)
-        setPdfUrl(url)
+        const pdfBlob = await response.blob();
+        const url = window.URL.createObjectURL(pdfBlob);
+        setPdfUrl(url);
       } catch (err: any) {
-        console.error("Error fetching CV:", err)
-        setError(err.message || "Failed to load CV. Please try again.")
+        console.error("Error fetching CV:", err);
+        setError(err.message || "Failed to load CV. Please try again.");
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
     if (token) {
-      fetchCV()
-    } else {
-      setError("Please log in to view the CV")
-      setLoading(false)
+      fetchCV();
     }
 
     // Cleanup blob URL on unmount
     return () => {
       if (pdfUrl) {
-        window.URL.revokeObjectURL(pdfUrl)
+        window.URL.revokeObjectURL(pdfUrl);
       }
-    }
-  }, [id, token]) // Removed pdfUrl from dependencies to prevent infinite loop
+    };
+  }, [id, token]);
 
   const handleDownload = () => {
     if (pdfUrl && fileName) {
-      const link = document.createElement("a")
-      link.href = pdfUrl
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      const link = document.createElement("a");
+      link.href = pdfUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -106,7 +116,7 @@ export default function CVDetailPage({ params }: { params: Promise<{ id: string 
             <p className="text-muted-foreground mb-6">
               {error.includes("not found")
                 ? "The CV you're looking for doesn't exist or has been removed."
-                : error.includes("authorized")
+                : error.includes("expired") || error.includes("unauthorized")
                 ? "Please check your permissions or log in."
                 : "Please try again later."}
             </p>
@@ -147,5 +157,5 @@ export default function CVDetailPage({ params }: { params: Promise<{ id: string 
         )}
       </main>
     </div>
-  )
+  );
 }

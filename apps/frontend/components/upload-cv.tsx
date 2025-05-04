@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle, Upload } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
+import { toast } from "react-toastify";
+
 
 interface UploadCVProps {
   onUploadSuccess?: () => void;
@@ -25,7 +27,10 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const token = localStorage.getItem("token");
+  const [token, setToken] = useState<string | null>(null);
+  useEffect(() => {
+    setToken(localStorage.getItem("token"));
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
@@ -41,17 +46,17 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
     e.preventDefault();
 
     if (!file) {
-      setStatus({ type: "error", message: "Please select a file to upload" });
+      toast.error("Please select a file to upload");
       return;
     }
 
     if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setStatus({ type: "error", message: "Only PDF files are accepted" });
+      toast.error("Only PDF files are accepted" );
       return;
     }
 
     if (!token) {
-      setStatus({ type: "error", message: "Please log in to upload a CV" });
+      toast.error("Please log in to upload a CV");
       return;
     }
 
@@ -61,7 +66,7 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("http://localhost:3003/cv/upload", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv/upload`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -81,11 +86,7 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       }
 
       const data = await response.json();
-      setStatus({
-        type: "success",
-        message: `CV uploaded successfully! CV ID: ${data.cvId}`,
-      });
-      setFile(null);
+      toast.success("CV uploaded successfully!");
 
       // Reset file input
       if (fileInputRef.current) {
@@ -101,10 +102,8 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       router.push(`/admin/chat?cvId=${data.cvId}`);
     } catch (error: any) {
       console.error("Error uploading CV:", error);
-      setStatus({
-        type: "error",
-        message: error.message || "Failed to upload CV. Please try again.",
-      });
+      toast.error(error.message || "Failed to upload CV. Please try again."
+      );
     } finally {
       setUploading(false);
     }
@@ -144,9 +143,12 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
                       />
                     </svg>
                     <p className="text-gray-800 truncate max-w-xs">
-                      <span className="font-semibold">Selected:</span> {file.name}
+                      <span className="font-semibold">Selected:</span>{" "}
+                      {file.name}
                     </p>
-                    <p className="text-xs text-gray-500">Click or drag to replace</p>
+                    <p className="text-xs text-gray-500">
+                      Click or drag to replace
+                    </p>
                   </>
                 ) : (
                   <>
@@ -168,7 +170,9 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
                     <p className="text-sm text-gray-600 font-semibold">
                       Click to upload or drag and drop
                     </p>
-                    <p className="text-xs text-gray-500">Only PDF files are accepted</p>
+                    <p className="text-xs text-gray-500">
+                      Only PDF files are accepted
+                    </p>
                   </>
                 )}
               </div>

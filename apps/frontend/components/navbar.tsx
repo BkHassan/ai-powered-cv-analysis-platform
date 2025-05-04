@@ -12,7 +12,7 @@ export function Navbar() {
     <nav className="bg-white/30 backdrop-blur-md text-gray-900 p-4 fixed top-0 left-0 right-0 z-10 shadow-md">
       <div className="container mx-auto flex justify-between items-center">
         <Link
-          href="/"
+          href="/admin"
           className="text-2xl font-bold tracking-tight hover:opacity-80 transition-opacity 
              bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent"
         >
@@ -69,6 +69,7 @@ function NavLinks({ mobile = false, onClick = () => {} }) {
       ))}
       <span
         onClick={() => {
+          localStorage.removeItem("token");
           router.push("/");
           onClick();
         }}

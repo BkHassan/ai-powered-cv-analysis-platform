@@ -49,7 +49,7 @@ export function ChatWithCV({
     const fetchCvs = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch("http://localhost:3003/cv", {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -84,7 +84,7 @@ export function ChatWithCV({
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:3003/cv/${selectedCV}/chat`,
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat`,
         {
           method: "POST",
           headers: {
