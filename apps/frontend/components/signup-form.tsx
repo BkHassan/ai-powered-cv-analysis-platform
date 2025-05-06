@@ -6,8 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react";
-import zxcvbn from "zxcvbn";
+import {
+  EyeIcon,
+  EyeOffIcon,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -19,11 +24,29 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
-  const [passwordStrength, setPasswordStrength] = useState<number | null>(null);
+  const [passwordStrength, setPasswordStrength] = useState({
+    minLength: false,
+    hasUpperCase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+  });
 
-  const evaluatePasswordStrength = (password: string) => {
-    const result = zxcvbn(password);
-    setPasswordStrength(result.score);
+  const validatePassword = (password: string) => {
+    setPasswordStrength({
+      minLength: password.length >= 8,
+      hasUpperCase: /[A-Z]/.test(password),
+      hasNumber: /\d/.test(password),
+      hasSpecialChar: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    });
+  };
+
+  const isPasswordValid = () => {
+    return (
+      passwordStrength.minLength &&
+      passwordStrength.hasUpperCase &&
+      passwordStrength.hasNumber &&
+      passwordStrength.hasSpecialChar
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -55,20 +78,23 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       setIsLoading(false);
       return;
     }
-    if (passwordStrength !== null && passwordStrength < 2) {
-      toast.error("Password is too weak. Please use a stronger password.");
+    if (!isPasswordValid()) {
+      toast.error("Password must meet all requirement");
       setIsLoading(false);
       return;
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/signup`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(formData),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -77,49 +103,12 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
         throw new Error("Signup failed");
       }
 
-      const data = await response.json();
-      toast.success("Account created successfully! Redirecting...");
-      setTimeout(() => {
-        onSignupSuccess();
-      }, 2000);
+      toast.success("Account created! Redirecting...");
+      setTimeout(() => onSignupSuccess(), 2000);
     } catch (error: any) {
-      toast.error(error.message || "Something went wrong. Please try again.");
+      toast.error(error.message || "Something went wrong.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const getPasswordStrengthLabel = () => {
-    if (passwordStrength === null) return "";
-    switch (passwordStrength) {
-      case 0:
-        return "Very Weak";
-      case 1:
-        return "Weak";
-      case 2:
-        return "Medium";
-      case 3:
-        return "Strong";
-      case 4:
-        return "Very Strong";
-      default:
-        return "";
-    }
-  };
-
-  const getStrengthColor = () => {
-    if (passwordStrength === null) return "";
-    switch (passwordStrength) {
-      case 0:
-      case 1:
-        return "text-red-500";
-      case 2:
-        return "text-yellow-500";
-      case 3:
-      case 4:
-        return "text-green-500";
-      default:
-        return "";
     }
   };
 
@@ -170,7 +159,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
-                evaluatePasswordStrength(e.target.value);
+                validatePassword(e.target.value);
               }}
             />
             <Button
@@ -192,30 +181,44 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
           </div>
 
           {password && (
-            <div className="mt-1 space-y-1">
-              <div className="h-2 w-full bg-gray-200 rounded overflow-hidden">
-                <div
-                  className={`h-full rounded transition-all duration-300 ${
-                    passwordStrength === 0
-                      ? "bg-red-500 w-1/5"
-                      : passwordStrength === 1
-                      ? "bg-red-500 w-2/5"
-                      : passwordStrength === 2
-                      ? "bg-yellow-500 w-3/5"
-                      : passwordStrength === 3
-                      ? "bg-green-500 w-4/5"
-                      : passwordStrength === 4
-                      ? "bg-green-600 w-full"
-                      : "w-0"
-                  }`}
-                />
-              </div>
-              <div className={`mt-2 text-sm ${getStrengthColor()}`}>
-                {getPasswordStrengthLabel()}
-              </div>
-            </div>
-          )}
-        </div>
+            <div className="mt-2 space-y-1 text-sm">
+            <ul className="list-none space-y-1">
+              <li className="flex items-center gap-2">
+                {passwordStrength.minLength ? (
+                  <CheckCircle2 className="text-green-500 h-4 w-4" />
+                ) : (
+                  <XCircle className="text-yellow-500 h-4 w-4" />
+                )}
+                Minimum 8 characters
+              </li>
+              <li className="flex items-center gap-2">
+                {passwordStrength.hasUpperCase ? (
+                  <CheckCircle2 className="text-green-500 h-4 w-4" />
+                ) : (
+                  <XCircle className="text-yellow-500 h-4 w-4" />
+                )}
+                At least one uppercase letter
+              </li>
+              <li className="flex items-center gap-2">
+                {passwordStrength.hasNumber ? (
+                  <CheckCircle2 className="text-green-500 h-4 w-4" />
+                ) : (
+                  <XCircle className="text-yellow-500 h-4 w-4" />
+                )}
+                At least one number
+              </li>
+              <li className="flex items-center gap-2">
+                {passwordStrength.hasSpecialChar ? (
+                  <CheckCircle2 className="text-green-500 h-4 w-4" />
+                ) : (
+                  <XCircle className="text-yellow-500 h-4 w-4" />
+                )}
+                At least one special character
+              </li>
+            </ul>
+          </div>
+        )}
+      </div>
 
         <div className="flex items-center space-x-2">
           <Checkbox id="terms" required />
@@ -242,7 +245,14 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
           )}
         </Button>
       </form>
-      <ToastContainer position="top-right" autoClose={3000} hideProgressBar newestOnTop closeOnClick pauseOnHover />
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar
+        newestOnTop
+        closeOnClick
+        pauseOnHover
+      />
     </>
   );
 }

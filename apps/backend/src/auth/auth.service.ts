@@ -151,7 +151,7 @@ export class AuthService implements OnModuleInit {
 
       // Validate password strength (consistent with signup)
       const passwordPattern =
-        /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
       if (!passwordPattern.test(password)) {
         this.logger.error('Admin password does not meet strength requirements');
         throw new BadRequestException(
@@ -218,7 +218,7 @@ export class AuthService implements OnModuleInit {
 
       //validate password strength
       const passwordPattern =
-        /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
       if (!passwordPattern.test(password)) {
         throw new BadRequestException(
           'Password must be at least 8 characters long, contain one uppercase letter, one number, and one special character',

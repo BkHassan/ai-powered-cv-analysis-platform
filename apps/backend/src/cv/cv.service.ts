@@ -15,12 +15,12 @@ import * as path from 'path';
 import { Express } from 'express';
 import pdfParse = require('pdf-parse');
 import { ChatOpenAI } from '@langchain/openai';
-import { PromptTemplate } from "@langchain/core/prompts";
-import { RunnableSequence, RunnablePassthrough } from "@langchain/core/runnables";
-import { StringOutputParser } from "@langchain/core/output_parsers";
-
-
-
+import { PromptTemplate } from '@langchain/core/prompts';
+import {
+  RunnableSequence,
+  RunnablePassthrough,
+} from '@langchain/core/runnables';
+import { StringOutputParser } from '@langchain/core/output_parsers';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -64,6 +64,7 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
 export class CvService {
   private cvCollection: Collection;
   private userCollection: Collection;
+  private chatHistoryCollection: Collection;
   private readonly logger = new Logger(CvService.name);
   private readonly embeddingFunction: IEmbeddingFunction;
   private readonly uploadFolder = path.join(__dirname, '..', 'Cvfiles');
@@ -87,6 +88,11 @@ export class CvService {
         name: 'users',
         embeddingFunction: this.embeddingFunction,
       });
+      this.chatHistoryCollection =
+        await this.chromaClient.getOrCreateCollection({
+          name: 'chat_history',
+          embeddingFunction: this.embeddingFunction,
+        });
       this.logger.log('ChromaDB collections initialized');
     } catch (error) {
       this.logger.error(
@@ -101,7 +107,9 @@ export class CvService {
   private async generateCvId(): Promise<string> {
     try {
       const result = await this.cvCollection.get();
-      const mainCvCount = result.ids.filter(id => !id.includes('_chunk_')).length;
+      const mainCvCount = result.ids.filter(
+        (id) => !id.includes('_chunk_'),
+      ).length;
       const newId = `cv${mainCvCount + 1}`;
       this.logger.debug(
         `Generating CV ID: ${newId} (main CVs: ${mainCvCount}, total records: ${result.ids.length})`,
@@ -113,8 +121,10 @@ export class CvService {
     }
   }
 
-
-  async uploadCv(uploaderEmail: string, file: Express.Multer.File): Promise<{ cvId: string }> {
+  async uploadCv(
+    uploaderEmail: string,
+    file: Express.Multer.File,
+  ): Promise<{ cvId: string }> {
     try {
       const absoluteUploadFolder = path.resolve(this.uploadFolder);
       this.logger.log(`Upload folder path: ${absoluteUploadFolder}`);
@@ -125,13 +135,20 @@ export class CvService {
       }
 
       // Check for duplicate CV by filename
-      const fileNameWithoutExt = file.originalname.replace(/\.pdf$/, '').toLowerCase();
+      const fileNameWithoutExt = file.originalname
+        .replace(/\.pdf$/, '')
+        .toLowerCase();
       const existingCvs = await this.cvCollection.get({
         where: { uploadedBy: uploaderEmail },
       });
-      this.logger.log(`Existing CVs: ${JSON.stringify(existingCvs.documents.map((doc: string) => JSON.parse(doc)))}`);
-      const duplicateCv = existingCvs.documents.find((doc: string) =>
-        JSON.parse(doc).name?.toLowerCase() === fileNameWithoutExt,
+      this.logger.log(
+        `Existing CVs: ${JSON.stringify(
+          existingCvs.documents.map((doc: string) => JSON.parse(doc)),
+        )}`,
+      );
+      const duplicateCv = existingCvs.documents.find(
+        (doc: string) =>
+          JSON.parse(doc).name?.toLowerCase() === fileNameWithoutExt,
       );
       if (duplicateCv) {
         this.logger.warn(
@@ -175,14 +192,16 @@ export class CvService {
       this.logger.log(`Generated ${embeddings.length} embeddings`);
 
       // Prepare chunk documents and metadata
-      const chunkDocuments = chunks.map((chunk, index) => JSON.stringify({
-        chunkIndex: index,
-        text: chunk,
-        cvId,
-        uploadDate: new Date().toISOString(),
-        name: fileNameWithoutExt,
-        fileName,
-      }));
+      const chunkDocuments = chunks.map((chunk, index) =>
+        JSON.stringify({
+          chunkIndex: index,
+          text: chunk,
+          cvId,
+          uploadDate: new Date().toISOString(),
+          name: fileNameWithoutExt,
+          fileName,
+        }),
+      );
 
       const chunkMetadatas = chunks.map((_, index) => ({
         cvId,
@@ -200,7 +219,9 @@ export class CvService {
         metadatas: chunkMetadatas,
         embeddings,
       });
-      this.logger.log(`Stored ${chunks.length} chunks for CV ${cvId} in ChromaDB`);
+      this.logger.log(
+        `Stored ${chunks.length} chunks for CV ${cvId} in ChromaDB`,
+      );
 
       return { cvId };
     } catch (error) {
@@ -216,7 +237,11 @@ export class CvService {
       const pdf = await pdfParse(dataBuffer);
       return pdf.text;
     } catch (error) {
-      this.logger.error(`Failed to extract text from ${filePath}`, error.stack, error.message);
+      this.logger.error(
+        `Failed to extract text from ${filePath}`,
+        error.stack,
+        error.message,
+      );
       throw new Error('PDF text extraction failed');
     }
   }
@@ -244,7 +269,7 @@ export class CvService {
       chunks.push(currentChunk.join(' '));
     }
 
-    return chunks.filter(chunk => chunk.trim().length > 0);
+    return chunks.filter((chunk) => chunk.trim().length > 0);
   }
 
   async getCv(
@@ -290,7 +315,7 @@ export class CvService {
   async deleteCv(cvId: string): Promise<void> {
     try {
       this.logger.log(`Deleting CV ${cvId}`);
-  
+
       // Check if CV exists
       const result = await this.cvCollection.get({ ids: [cvId] });
       this.logger.debug(`CV query result: ${JSON.stringify(result)}`);
@@ -298,13 +323,13 @@ export class CvService {
         this.logger.warn(`CV ${cvId} not found`);
         throw new NotFoundException('CV not found');
       }
-  
+
       // Get file path from CV document
       const cvDoc = JSON.parse(result.documents[0]);
       const fileName = cvDoc.fileName || `${cvId}_cv.pdf`; // Fallback filename
       const filePath = path.join(this.uploadFolder, fileName);
       this.logger.debug(`Checking file at: ${filePath}`);
-  
+
       // Delete file if it exists
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -312,22 +337,40 @@ export class CvService {
       } else {
         this.logger.warn(`CV file not found at: ${filePath}`);
       }
-  
+
       // Delete CV from collection
       await this.cvCollection.delete({ ids: [cvId] });
       this.logger.log(`${cvId} deleted from collection`);
-  
-          // Delete associated chunks
-    const chunkResult = await this.cvCollection.get({ where: { cvId } });
-    if (chunkResult.ids.length > 0) {
-      await this.cvCollection.delete({ ids: chunkResult.ids });
-      this.logger.log(`Deleted ${chunkResult.ids.length} chunks for CV ${cvId}`);
-    } else {
-      this.logger.debug(`No chunks found for CV ${cvId}`);
-}
 
+      // Delete associated chunks
+      const chunkResult = await this.cvCollection.get({ where: { cvId } });
+      if (chunkResult.ids.length > 0) {
+        await this.cvCollection.delete({ ids: chunkResult.ids });
+        this.logger.log(
+          `Deleted ${chunkResult.ids.length} chunks for CV ${cvId}`,
+        );
+      } else {
+        this.logger.debug(`No chunks found for CV ${cvId}`);
+      }
+      
+      // Delete associated chat history
+      const chatResult = await this.chatHistoryCollection.get({
+        where: { cvId },
+      });
+      if (chatResult.ids.length > 0) {
+        await this.chatHistoryCollection.delete({ ids: chatResult.ids });
+        this.logger.log(
+          `Deleted ${chatResult.ids.length} chat entries for CV ${cvId}`,
+        );
+      } else {
+        this.logger.debug(`No chat history found for CV ${cvId}`);
+      }
     } catch (error) {
-      this.logger.error(`CV deletion failed for ${cvId}`, error.stack, error.message);
+      this.logger.error(
+        `CV deletion failed for ${cvId}`,
+        error.stack,
+        error.message,
+      );
       throw error;
     }
   }
@@ -336,7 +379,7 @@ export class CvService {
     try {
       const result = await this.cvCollection.get();
       this.logger.log(`Retrieved ${result.ids.length} CVs`);
-  
+
       // Filter main CV records (exclude chunks)
       let mainCvCounter = 0;
       const mainCvs = result.documents
@@ -356,10 +399,10 @@ export class CvService {
             downloadUrl: `/cv/${result.ids[index]}`, // For frontend streaming
           };
         })
-        .filter(cv => cv !== null); // Remove null entries (chunks)
-  
+        .filter((cv) => cv !== null); // Remove null entries (chunks)
+
       this.logger.log(`Filtered ${mainCvs.length} main CVs`);
-  
+
       if (requesterRole === 'admin') {
         return mainCvs;
       } else {
@@ -388,7 +431,7 @@ export class CvService {
       this.logger.log(
         `Chat request for CV ${cvId} by ${requesterEmail} with role ${requesterRole}`,
       );
-  
+
       // Verify CV exists
       const result = await this.cvCollection.get({ where: { cvId } });
       if (result.ids.length === 0 || !result.documents[0]) {
@@ -396,14 +439,16 @@ export class CvService {
         throw new NotFoundException('CV not found');
       }
       this.logger.debug(`Retrieved ${result.ids.length} chunks for CV ${cvId}`);
-  
+
       const { message } = chatCvDto;
       this.logger.log(`Received message: ${message}`);
-  
+
       // Convert query to embedding
-      const queryEmbedding = (await this.embeddingFunction.generate([message]))[0];
+      const queryEmbedding = (
+        await this.embeddingFunction.generate([message])
+      )[0];
       this.logger.log(`Generated query embedding for: ${message}`);
-  
+
       // Perform vector similarity search
       const queryResult = await this.cvCollection.query({
         queryEmbeddings: [queryEmbedding],
@@ -411,7 +456,7 @@ export class CvService {
         where: { cvId }, // Restrict to chunks of this CV
       });
       this.logger.debug(`Query result: ${JSON.stringify(queryResult)}`);
-  
+
       // Format retrieved chunks
       const context = queryResult.documents[0]
         .map((doc, index) => {
@@ -420,25 +465,25 @@ export class CvService {
         })
         .join('\n\n');
       this.logger.log(`Formatted context length: ${context.length} characters`);
-  
+
       if (!context) {
         this.logger.warn(`No relevant chunks found for CV ${cvId}`);
         return { response: 'No relevant information found in the CV.' };
       }
-  
+
       // Initialize Open AI
       const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
       if (!openaiApiKey) {
         this.logger.error('OPENAI_API_KEY is not defined in .env');
         throw new Error('OPENAI_API_KEY is required');
       }
-  
+
       const llm = new ChatOpenAI({
         openAIApiKey: openaiApiKey,
         modelName: 'gpt-4o-mini',
         temperature: 0.7,
       });
-  
+
       // Create prompt template
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant answering questions about a candidate's CV. Use the following CV content to provide an accurate and concise response. If the information is not available, state so clearly.
@@ -450,7 +495,7 @@ export class CvService {
   
         Response:
       `);
-  
+
       // Create RAG chain
       const chain = RunnableSequence.from([
         {
@@ -461,14 +506,106 @@ export class CvService {
         llm,
         new StringOutputParser(),
       ]);
-  
+
       // Generate response
       const response = await chain.invoke(message);
       this.logger.log(`Chat response: ${response}`);
-  
+
+      //store chat in chat_history
+      const chatId = `chat_${cvId}_${Date.now()}`;
+      const chatDocument = JSON.stringify({
+        cvId,
+        userEmail: requesterEmail,
+        query: message,
+        response,
+        timestamp: new Date().toISOString(),
+      });
+      const chatEmbedding = queryEmbedding; // Reuse query embedding
+      await this.chatHistoryCollection.add({
+        ids: [chatId],
+        documents: [chatDocument],
+        metadatas: [{ cvId, userEmail: requesterEmail }],
+        embeddings: [chatEmbedding],
+      });
+      this.logger.log(`Stored chat entry ${chatId} for CV ${cvId}`);
+
       return { response };
     } catch (error) {
       this.logger.error('Chat CV failed', error.stack, error.message);
+      throw error;
+    }
+  }
+  async getChatHistory(
+    cvId: string,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<{ query: string; response: string; timestamp: string }[]> {
+    try {
+      this.logger.log(
+        `Retrieving chat history for CV ${cvId} by ${requesterEmail}`,
+      );
+
+      // Verify CV exists
+      const cvResult = await this.cvCollection.get({ ids: [cvId] });
+      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
+        this.logger.warn(`CV ${cvId} not found`);
+        throw new NotFoundException('CV not found');
+      }
+
+      // Check authorization
+      if (
+        requesterRole !== 'admin' &&
+        cvResult.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        this.logger.warn(
+          `Unauthorized chat history access by ${requesterEmail} for CV ${cvId}`,
+        );
+        throw new ForbiddenException(
+          'You are not authorized to view this chat history',
+        );
+      }
+
+      // Get chat history
+      // Get chat history with explicit $and operator
+      this.logger.debug(
+        `Querying chat_history with where: ${JSON.stringify({
+          $and: [{ cvId: cvId }, { userEmail: requesterEmail }],
+        })}`
+      );
+      const chatResult = await this.chatHistoryCollection.get({
+        where: {
+          $and: [
+            { cvId: cvId },
+            { userEmail: requesterEmail }
+          ]
+        }
+      });
+      this.logger.log(
+        `Retrieved ${chatResult.ids.length} chat entries for CV ${cvId}`,
+      );
+
+      // Format chat history
+      const chatHistory = chatResult.documents
+        .map((doc) => {
+          const parsedDoc = JSON.parse(doc!);
+          return {
+            query: parsedDoc.query,
+            response: parsedDoc.response,
+            timestamp: parsedDoc.timestamp,
+          };
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        ); // Sort by timestamp
+
+      return chatHistory;
+    } catch (error) {
+      this.logger.error(
+        'Chat history retrieval failed',
+        error.stack,
+        error.message,
+      );
       throw error;
     }
   }

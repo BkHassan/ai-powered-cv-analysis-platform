@@ -103,5 +103,11 @@ export class CvController {
       req.user.role,
     );
   }
+  
+  @Get(':cvId/chat-history')
+  async getChatHistory(@Param('cvId') cvId: string, @Request() req: any) {
+    const user = req.user as { email: string; role: string };
+    return this.cvService.getChatHistory(cvId, user.email, user.role);
+  }
 }
 

@@ -12,6 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MessageSquare, Send, User } from "lucide-react";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 
 interface CV {
   realId: string;
@@ -49,6 +52,10 @@ export function ChatWithCV({
     const fetchCvs = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) {
+          toast.error("Please log in to view CVs");
+          return;
+        }
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -63,10 +70,66 @@ export function ChatWithCV({
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
+        toast.error("Failed to load CVs. Please try again.");
       }
     };
     fetchCvs();
   }, [initialCvId, showInstructions]);
+
+  useEffect(() => {
+    if (!selectedCV || showInstructions) return;
+
+    const fetchChatHistory = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          toast.error("Please log in to view chat history");
+          return;
+        }
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat-history`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Chat history fetch failed: ${response.status} - ${errorText}`);
+          if (response.status === 404) {
+            toast.error("CV not found");
+            setMessages([{ role: "assistant", content: "How can I help you" }]);
+            return;
+          } else if (response.status === 403) {
+            toast.error("You are not authorized to view this chat history");
+            return;
+          } else if (response.status === 401) {
+            toast.error("Session expired. Please log in again.");
+            localStorage.removeItem("token");
+            return;
+          }
+          throw new Error("Failed to fetch chat history");
+        if (!response.ok) throw new Error("Failed to fetch chat history");
+        }
+        const data = await response.json();
+        const historyMessages: Message[] = data.flatMap(
+          (entry: { query: string; response: string }) => [
+            { role: "user", content: entry.query },
+            { role: "assistant", content: entry.response },
+          ]
+        );
+        setMessages([
+          { role: "assistant", content: "How can I help you" },
+          ...historyMessages,
+        ]);
+      } catch (error) {
+        console.error("Error fetching chat history:", error);
+        toast.error("Failed to load chat history. Please try again.");
+      }
+    };
+    fetchChatHistory();
+  }, [selectedCV, showInstructions]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -83,6 +146,12 @@ export function ChatWithCV({
 
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Please log in to send messages");
+        setMessages((prev) => prev.slice(0, -1)); // Remove user message
+        setIsLoading(false);
+        return;
+      }
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat`,
         {
@@ -106,6 +175,29 @@ export function ChatWithCV({
         ...prev,
         { role: "assistant", content: data.response },
       ]);
+
+      // Refresh chat history
+      const historyResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat-history`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (historyResponse.ok) {
+        const historyData = await historyResponse.json();
+        const historyMessages: Message[] = historyData.flatMap(
+          (entry: { query: string; response: string }) => [
+            { role: "user", content: entry.query },
+            { role: "assistant", content: entry.response },
+          ]
+        );
+        setMessages([
+          { role: "assistant", content: "How can I help you" },
+          ...historyMessages,
+        ]);
+      }
     } catch (error) {
       let errorMessage = "An unknown error occurred.";
       if (error instanceof Error) {
