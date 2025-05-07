@@ -14,7 +14,7 @@ import {
 import { MessageSquare, Send, User } from "lucide-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface CV {
   realId: string;
@@ -29,24 +29,24 @@ interface Message {
 }
 
 interface ChatWithCVProps {
-  initialCvId?: string;
+  initialFileName?: string;
   showInstructions?: boolean;
 }
 
 export function ChatWithCV({
-  initialCvId = "",
+  initialFileName = "",
   showInstructions = false,
 }: ChatWithCVProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [cvs, setCvs] = useState<CV[]>([]);
   const [selectedCV, setSelectedCV] = useState<string>(() => {
-    return typeof window !== "undefined"
-      ? localStorage.getItem("lastSelectedCvId") || initialCvId
-      : initialCvId;
+    const urlFileName = searchParams.get("fileName");
+    return urlFileName || (typeof window !== "undefined"
+      ? localStorage.getItem("lastSelectedFileName") || initialFileName
+      : initialFileName);
   });
-  const [messages, setMessages] = useState<Message[]>(
-    initialCvId ? [{ role: "assistant", content: "How can I help you" }] : []
-  );
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -68,9 +68,14 @@ export function ChatWithCV({
         });
         if (!response.ok) throw new Error("Failed to fetch CVs");
         const data = await response.json();
+        console.log("Fetched CVs:", data); // Debug CV list
         setCvs(data);
-        if (initialCvId && data.some((cv: CV) => cv.realId === initialCvId)) {
-          setSelectedCV(initialCvId);
+        const urlFileName = searchParams.get("fileName");
+        if (urlFileName && data.some((cv: CV) => cv.fileName === urlFileName)) {
+          setSelectedCV(urlFileName);
+        } else if (urlFileName) {
+          console.warn(`URL fileName ${urlFileName} not found in CV list`);
+          toast.error("Selected CV not found");
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
@@ -78,14 +83,12 @@ export function ChatWithCV({
       }
     };
     fetchCvs();
-  }, [initialCvId, showInstructions]);
+  }, [initialFileName, showInstructions, searchParams]);
 
   useEffect(() => {
     if (!selectedCV || showInstructions) return;
 
-    // Reset messages to initial state when changing CVs
-    setMessages([{ role: "assistant", content: "How can I help you" }]);
-
+    const controller = new AbortController();
     const fetchChatHistory = async () => {
       try {
         const token = localStorage.getItem("token");
@@ -93,21 +96,23 @@ export function ChatWithCV({
           toast.error("Please log in to view chat history");
           return;
         }
+        console.log(`Fetching chat history for fileName: ${selectedCV}`); // Debug selectedCV
+        setMessages([]); // Clear messages to avoid blinking
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat-history`,
+          `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(selectedCV)}/chat-history`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            signal: controller.signal,
           }
         );
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(
-            `Chat history fetch failed: ${response.status} - ${errorText}`
-          );
+          console.error(`Chat history fetch failed: ${response.status} - ${errorText}`);
           if (response.status === 404) {
-            toast.error("CV not found");
+            console.log(`No chat history found for fileName: ${selectedCV}`);
+            setMessages([{ role: "assistant", content: "How can I help you?" }]);
             return;
           } else if (response.status === 403) {
             toast.error("You are not authorized to view this chat history");
@@ -115,29 +120,33 @@ export function ChatWithCV({
           } else if (response.status === 401) {
             toast.error("Session expired. Please log in again.");
             localStorage.removeItem("token");
+            router.push("/login");
             return;
           }
-          throw new Error("Failed to fetch chat history");
+          throw new Error(`Failed to fetch chat history: ${errorText}`);
         }
         const data = await response.json();
+        console.log("Chat history response:", data); // Debug response
         const historyMessages: Message[] = data.flatMap(
           (entry: { query: string; response: string }) => [
             { role: "user", content: entry.query },
             { role: "assistant", content: entry.response },
           ]
         );
-
-        setMessages((prev) => [
-          prev[0], // Keep the initial greeting
+        setMessages([
+          { role: "assistant", content: "How can I help you?" },
           ...historyMessages,
         ]);
-      } catch (error) {
+      } catch (error: any) {
+        if (error.name === "AbortError") return;
         console.error("Error fetching chat history:", error);
         toast.error("Failed to load chat history. Please try again.");
+        setMessages([{ role: "assistant", content: "How can I help you?" }]);
       }
     };
     fetchChatHistory();
-  }, [selectedCV, showInstructions]);
+    return () => controller.abort();
+  }, [selectedCV, showInstructions, router]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -156,12 +165,12 @@ export function ChatWithCV({
       const token = localStorage.getItem("token");
       if (!token) {
         toast.error("Please log in to send messages");
-        setMessages((prev) => prev.slice(0, -1)); // Remove user message
+        setMessages((prev) => prev.slice(0, -1));
         setIsLoading(false);
         return;
       }
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat`,
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(selectedCV)}/chat`,
         {
           method: "POST",
           headers: {
@@ -173,12 +182,14 @@ export function ChatWithCV({
       );
       if (!response.ok) {
         const text = await response.text();
+        console.error(`Send message failed: ${response.status} - ${text}`);
         throw new Error(
           response.status === 404 ? "CV not found" : "Failed to send message"
         );
       }
 
       const data = await response.json();
+      console.log("Send message response:", data); // Debug response
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.response },
@@ -188,6 +199,7 @@ export function ChatWithCV({
       if (error instanceof Error) {
         errorMessage = error.message;
       }
+      console.error("Error sending message:", errorMessage);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `Error: ${errorMessage}` },
@@ -195,16 +207,6 @@ export function ChatWithCV({
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleCVChange = (value: string) => {
-    setSelectedCV(value);
-
-    localStorage.setItem("lastSelectedCvId", value);
-
-    router.push(`/admin/chat?cvId=${value}`, { scroll: false });
-
-    // No need to reset messages here as the useEffect will handle it
   };
 
   return (
@@ -235,15 +237,20 @@ export function ChatWithCV({
             <>
               <Select
                 value={selectedCV}
-                onValueChange={handleCVChange}
+                onValueChange={(value) => {
+                  console.log(`Selecting CV with fileName: ${value}`); // Debug selection
+                  setSelectedCV(value);
+                  localStorage.setItem("lastSelectedFileName", value);
+                  router.push(`/admin/chat?fileName=${encodeURIComponent(value)}`, { scroll: false });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a CV" />
                 </SelectTrigger>
                 <SelectContent>
                   {cvs.map((cv) => (
-                    <SelectItem key={cv.realId} value={cv.realId}>
-                      {cv.fileName} {cv.name}
+                    <SelectItem key={cv.fileName} value={cv.fileName}>
+                      {cv.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -296,9 +303,7 @@ export function ChatWithCV({
                           <div className="flex justify-start">
                             <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium">
-                                  AI Assistant
-                                </span>
+                                <span className="font-medium">AI Assistant</span>
                                 <MessageSquare size={14} />
                               </div>
                               <div className="flex items-center gap-2 text-2xl text-black">
@@ -316,10 +321,7 @@ export function ChatWithCV({
                       </div>
                     )}
                   </div>
-                  <form
-                    onSubmit={handleSendMessage}
-                    className="flex gap-2 mt-2"
-                  >
+                  <form onSubmit={handleSendMessage} className="flex gap-2 mt-2">
                     <Input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
