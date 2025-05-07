@@ -5,7 +5,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
+import { ChromaClient, Collection, IEmbeddingFunction, Where } from 'chromadb';
 import { ChatCvDto } from './dto/chat-cv.dto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ConfigService } from '@nestjs/config';
@@ -124,33 +124,54 @@ export class CvService {
   private async resolveFileNameToCvId(fileName: string): Promise<string> {
     try {
       this.logger.debug(`Attempting to resolve fileName: ${fileName}`);
-      const result = await this.cvCollection.get({ where: { fileName } });
-      this.logger.debug(`Resolve query result: ${JSON.stringify(result)}`);
-      if (result.ids.length === 0 || !result.documents[0]) {
-        this.logger.warn(`No CV found for fileName: ${fileName}`);
-        // Fallback: Try querying all CVs to find a match
-        const allCvs = await this.cvCollection.get();
-        const matchingCv = allCvs.documents.find((doc: string) => {
-          try {
-            const parsedDoc = JSON.parse(doc);
-            return parsedDoc.fileName === fileName;
-          } catch (e) {
-            return false;
+
+      // First try: get all documents and find the main CV
+      const allCvs = await this.cvCollection.get();
+
+      // Find the main CV (non-chunk) document that matches the fileName
+      for (let i = 0; i < allCvs.ids.length; i++) {
+        if (allCvs.ids[i].includes('_chunk_')) continue;
+
+        try {
+          const doc = JSON.parse(allCvs.documents[i]!);
+          if (doc.fileName === fileName) {
+            return allCvs.ids[i];
           }
-        });
-        if (matchingCv) {
-          const index = allCvs.documents.indexOf(matchingCv);
-          const cvId = allCvs.ids[index];
-          this.logger.debug(`Fallback: Resolved fileName ${fileName} to cvId ${cvId}`);
-          return cvId;
+        } catch (e) {
+          continue;
         }
-        throw new NotFoundException(`CV not found for fileName: ${fileName}`);
       }
-      const cvId = result.ids[0];
-      this.logger.debug(`Resolved fileName ${fileName} to cvId ${cvId}`);
-      return cvId;
+
+      // If no main CV found, try to extract cvId from chunks
+      const chunks = allCvs.documents
+        .map((doc, index) => ({
+          id: allCvs.ids[index],
+          doc: doc,
+        }))
+        .filter((item) => item.id.includes('_chunk_'));
+
+      for (const chunk of chunks) {
+        try {
+          const parsedChunk = JSON.parse(chunk.doc!);
+          if (parsedChunk.fileName === fileName) {
+            // Extract the base cvId from the chunk id (e.g., "cv1_chunk_0" -> "cv1")
+            const cvId = chunk.id.split('_chunk_')[0];
+            this.logger.debug(`Found matching chunk, extracted cvId: ${cvId}`);
+            return cvId;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      this.logger.warn(`No CV found for fileName: ${fileName}`);
+      throw new NotFoundException(`CV not found for fileName: ${fileName}`);
     } catch (error) {
-      this.logger.error(`Failed to resolve fileName ${fileName}`, error.stack, error.message);
+      this.logger.error(
+        `Failed to resolve fileName ${fileName}`,
+        error.stack,
+        error.message,
+      );
       throw error;
     }
   }
@@ -163,12 +184,12 @@ export class CvService {
     try {
       const absoluteUploadFolder = path.resolve(this.uploadFolder);
       this.logger.log(`Upload folder path: ${absoluteUploadFolder}`);
-  
+
       if (!fs.existsSync(this.uploadFolder)) {
         fs.mkdirSync(this.uploadFolder, { recursive: true });
         this.logger.log(`Created upload folder: ${absoluteUploadFolder}`);
       }
-  
+
       // Check for duplicate CV by provided name
       const nameLower = name.toLowerCase();
       const existingCvs = await this.cvCollection.get({
@@ -180,8 +201,7 @@ export class CvService {
         )}`,
       );
       const duplicateCv = existingCvs.documents.find(
-        (doc: string) =>
-          JSON.parse(doc).name?.toLowerCase() === nameLower,
+        (doc: string) => JSON.parse(doc).name?.toLowerCase() === nameLower,
       );
       if (duplicateCv) {
         this.logger.warn(
@@ -189,7 +209,7 @@ export class CvService {
         );
         throw new BadRequestException('CV with this name already exists');
       }
-  
+
       // Generate hashed filename
       const hash = crypto
         .createHash('sha256')
@@ -199,10 +219,10 @@ export class CvService {
       const fileName = `${hash}.pdf`;
       const filePath = path.join(this.uploadFolder, fileName);
       this.logger.log(`Saving CV to: ${path.resolve(filePath)}`);
-  
+
       fs.writeFileSync(filePath, file.buffer);
       this.logger.log(`CV file saved to: ${filePath}`);
-  
+
       // Store original CV metadata
       const cvDocument = JSON.stringify({
         uploadDate: new Date().toISOString(),
@@ -314,7 +334,9 @@ export class CvService {
     requesterRole: string,
   ): Promise<{ filePath: string; fileName: string }> {
     try {
-      this.logger.log(`Retrieving CV for fileName ${fileName} by ${requesterEmail}`);
+      this.logger.log(
+        `Retrieving CV for fileName ${fileName} by ${requesterEmail}`,
+      );
       const cvId = await this.resolveFileNameToCvId(fileName);
       const result = await this.cvCollection.get({ ids: [cvId] });
       this.logger.debug(`CV query result: ${JSON.stringify(result)}`);
@@ -410,6 +432,10 @@ export class CvService {
       const result = await this.cvCollection.get();
       this.logger.log(`Retrieved ${result.ids.length} CVs`);
 
+      if (result.ids.length === 0) {
+        this.logger.warn(`No CVs found in cvCollection for ${requesterEmail}`);
+        return [];
+      }
       let mainCvCounter = 0;
       const mainCvs = result.documents
         .map((doc, index) => {
@@ -590,37 +616,74 @@ export class CvService {
         );
       }
 
-      const whereClause = {
+      const whereClause: Where = {
         $and: [
-          { cvId: cvId },
-          { userEmail: requesterEmail }
-        ]
+          { cvId: cvId } as Where,
+          { userEmail: requesterEmail } as Where,
+        ],
       };
-      this.logger.debug(`Querying chat_history with where: ${JSON.stringify(whereClause)}`);
-      const chatResult = await this.chatHistoryCollection.get({
-        where: whereClause
-      });
-      this.logger.debug(`Chat history query result: ${JSON.stringify(chatResult)}`);
-
-      const chatHistory = chatResult.documents
-        .map((doc) => {
-          const parsedDoc = JSON.parse(doc!);
-          return {
-            query: parsedDoc.query,
-            response: parsedDoc.response,
-            timestamp: parsedDoc.timestamp,
-          };
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-        );
-
-      this.logger.log(
-        `Retrieved ${chatHistory.length} chat entries for CV ${cvId} by ${requesterEmail}`,
+      this.logger.debug(
+        `Querying chat_history with where: ${JSON.stringify(whereClause)}`,
       );
 
-      return chatHistory;
+      try {
+        const chatResult = await this.chatHistoryCollection.get({
+          where: whereClause,
+        });
+        this.logger.debug(
+          `Chat history query result: ${JSON.stringify(chatResult)}`,
+        );
+
+        if (!chatResult.documents || chatResult.documents.length === 0) {
+          this.logger.debug('No chat history found');
+          return [];
+        }
+
+        const chatHistory = chatResult.documents
+          .map((doc) => {
+            try {
+              const parsedDoc = JSON.parse(doc!);
+              return {
+                query: parsedDoc.query,
+                response: parsedDoc.response,
+                timestamp: parsedDoc.timestamp,
+              };
+            } catch (parseError) {
+              this.logger.error(
+                `Failed to parse chat document: ${doc}`,
+                parseError.stack,
+              );
+              return null;
+            }
+          })
+          .filter(
+            (
+              entry,
+            ): entry is {
+              query: string;
+              response: string;
+              timestamp: string;
+            } => entry !== null,
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+
+        this.logger.log(
+          `Retrieved ${chatHistory.length} chat entries for CV ${cvId} by ${requesterEmail}`,
+        );
+
+        return chatHistory;
+      } catch (chatQueryError) {
+        this.logger.error(
+          `Failed to query chat history collection: ${chatQueryError.message}`,
+          chatQueryError.stack,
+        );
+        throw new Error(
+          `Failed to query chat history: ${chatQueryError.message}`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Chat history retrieval failed for fileName ${fileName}`,

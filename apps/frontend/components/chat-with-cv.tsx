@@ -42,9 +42,12 @@ export function ChatWithCV({
   const [cvs, setCvs] = useState<CV[]>([]);
   const [selectedCV, setSelectedCV] = useState<string>(() => {
     const urlFileName = searchParams.get("fileName");
-    return urlFileName || (typeof window !== "undefined"
-      ? localStorage.getItem("lastSelectedFileName") || initialFileName
-      : initialFileName);
+    return (
+      urlFileName ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("lastSelectedFileName") || initialFileName
+        : initialFileName)
+    );
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -66,24 +69,50 @@ export function ChatWithCV({
             Authorization: `Bearer ${token}`,
           },
         });
-        if (!response.ok) throw new Error("Failed to fetch CVs");
-        const data = await response.json();
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Fetch CVs failed: ${response.status} - ${errorText}`);
+          throw new Error(`Failed to fetch CVs: ${errorText}`);
+        }
+       const data = await response.json();
         console.log("Fetched CVs:", data); // Debug CV list
+        setCvs(data);
+        if (!Array.isArray(data) || data.length === 0) {
+          console.warn("No CVs returned from /cv");
+          setCvs([]);
+          setSelectedCV("");
+          toast.warn("No CVs available. Please upload a CV.");
+          return;
+        }
         setCvs(data);
         const urlFileName = searchParams.get("fileName");
         if (urlFileName && data.some((cv: CV) => cv.fileName === urlFileName)) {
+          console.log(`URL fileName ${urlFileName} found in CV list`);
           setSelectedCV(urlFileName);
+          localStorage.setItem("lastSelectedFileName", urlFileName);
         } else if (urlFileName) {
           console.warn(`URL fileName ${urlFileName} not found in CV list`);
           toast.error("Selected CV not found");
+          setSelectedCV(data[0]?.fileName || "");
+          if (data[0]?.fileName) {
+            localStorage.setItem("lastSelectedFileName", data[0].fileName);
+            router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
+          }
+        } else if (data[0]?.fileName) {
+          console.log(`Setting default CV to ${data[0].fileName}`);
+          setSelectedCV(data[0].fileName);
+          localStorage.setItem("lastSelectedFileName", data[0].fileName);
+          router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
         toast.error("Failed to load CVs. Please try again.");
+        setCvs([]);
+        setSelectedCV("");
       }
     };
     fetchCvs();
-  }, [initialFileName, showInstructions, searchParams]);
+  }, [initialFileName, showInstructions, searchParams, router]);
 
   useEffect(() => {
     if (!selectedCV || showInstructions) return;
@@ -99,7 +128,9 @@ export function ChatWithCV({
         console.log(`Fetching chat history for fileName: ${selectedCV}`); // Debug selectedCV
         setMessages([]); // Clear messages to avoid blinking
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(selectedCV)}/chat-history`,
+          `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(
+            selectedCV
+          )}/chat-history`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -109,10 +140,14 @@ export function ChatWithCV({
         );
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`Chat history fetch failed: ${response.status} - ${errorText}`);
+          console.error(
+            `Chat history fetch failed: ${response.status} - ${errorText}`
+          );
           if (response.status === 404) {
             console.log(`No chat history found for fileName: ${selectedCV}`);
-            setMessages([{ role: "assistant", content: "How can I help you?" }]);
+            setMessages([
+              { role: "assistant", content: "How can I help you?" },
+            ]);
             return;
           } else if (response.status === 403) {
             toast.error("You are not authorized to view this chat history");
@@ -170,7 +205,9 @@ export function ChatWithCV({
         return;
       }
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(selectedCV)}/chat`,
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(
+          selectedCV
+        )}/chat`,
         {
           method: "POST",
           headers: {
@@ -241,7 +278,10 @@ export function ChatWithCV({
                   console.log(`Selecting CV with fileName: ${value}`); // Debug selection
                   setSelectedCV(value);
                   localStorage.setItem("lastSelectedFileName", value);
-                  router.push(`/admin/chat?fileName=${encodeURIComponent(value)}`, { scroll: false });
+                  router.push(
+                    `/admin/chat?fileName=${encodeURIComponent(value)}`,
+                    { scroll: false }
+                  );
                 }}
               >
                 <SelectTrigger>
@@ -303,7 +343,9 @@ export function ChatWithCV({
                           <div className="flex justify-start">
                             <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium">AI Assistant</span>
+                                <span className="font-medium">
+                                  AI Assistant
+                                </span>
                                 <MessageSquare size={14} />
                               </div>
                               <div className="flex items-center gap-2 text-2xl text-black">
@@ -321,7 +363,10 @@ export function ChatWithCV({
                       </div>
                     )}
                   </div>
-                  <form onSubmit={handleSendMessage} className="flex gap-2 mt-2">
+                  <form
+                    onSubmit={handleSendMessage}
+                    className="flex gap-2 mt-2"
+                  >
                     <Input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
