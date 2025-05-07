@@ -71,7 +71,6 @@ export function ChatWithCV({
         setCvs(data);
         if (initialCvId && data.some((cv: CV) => cv.realId === initialCvId)) {
           setSelectedCV(initialCvId);
-          setMessages([{ role: "assistant", content: "How can I help you" }]);
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
@@ -83,6 +82,9 @@ export function ChatWithCV({
 
   useEffect(() => {
     if (!selectedCV || showInstructions) return;
+
+    // Reset messages to initial state when changing CVs
+    setMessages([{ role: "assistant", content: "How can I help you" }]);
 
     const fetchChatHistory = async () => {
       try {
@@ -101,10 +103,11 @@ export function ChatWithCV({
         );
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`Chat history fetch failed: ${response.status} - ${errorText}`);
+          console.error(
+            `Chat history fetch failed: ${response.status} - ${errorText}`
+          );
           if (response.status === 404) {
             toast.error("CV not found");
-            setMessages([{ role: "assistant", content: "How can I help you" }]);
             return;
           } else if (response.status === 403) {
             toast.error("You are not authorized to view this chat history");
@@ -123,8 +126,9 @@ export function ChatWithCV({
             { role: "assistant", content: entry.response },
           ]
         );
-        setMessages([
-          { role: "assistant", content: "How can I help you" },
+
+        setMessages((prev) => [
+          prev[0], // Keep the initial greeting
           ...historyMessages,
         ]);
       } catch (error) {
@@ -179,29 +183,6 @@ export function ChatWithCV({
         ...prev,
         { role: "assistant", content: data.response },
       ]);
-
-      // Refresh chat history
-      const historyResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat-history`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      if (historyResponse.ok) {
-        const historyData = await historyResponse.json();
-        const historyMessages: Message[] = historyData.flatMap(
-          (entry: { query: string; response: string }) => [
-            { role: "user", content: entry.query },
-            { role: "assistant", content: entry.response },
-          ]
-        );
-        setMessages([
-          { role: "assistant", content: "How can I help you" },
-          ...historyMessages,
-        ]);
-      }
     } catch (error) {
       let errorMessage = "An unknown error occurred.";
       if (error instanceof Error) {
@@ -214,6 +195,16 @@ export function ChatWithCV({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCVChange = (value: string) => {
+    setSelectedCV(value);
+
+    localStorage.setItem("lastSelectedCvId", value);
+
+    router.push(`/admin/chat?cvId=${value}`, { scroll: false });
+
+    // No need to reset messages here as the useEffect will handle it
   };
 
   return (
@@ -244,12 +235,7 @@ export function ChatWithCV({
             <>
               <Select
                 value={selectedCV}
-                onValueChange={(value) => {
-                  setSelectedCV(value);
-                  localStorage.setItem("lastSelectedCvId", value);
-                  router.push(`/admin/chat?cvId=${value}`, { scroll: false });
-                  setMessages([{ role: "assistant", content: "How can I help you" }]);
-                }}
+                onValueChange={handleCVChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a CV" />
@@ -310,7 +296,9 @@ export function ChatWithCV({
                           <div className="flex justify-start">
                             <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium">AI Assistant</span>
+                                <span className="font-medium">
+                                  AI Assistant
+                                </span>
                                 <MessageSquare size={14} />
                               </div>
                               <div className="flex items-center gap-2 text-2xl text-black">
@@ -328,7 +316,10 @@ export function ChatWithCV({
                       </div>
                     )}
                   </div>
-                  <form onSubmit={handleSendMessage} className="flex gap-2 mt-2">
+                  <form
+                    onSubmit={handleSendMessage}
+                    className="flex gap-2 mt-2"
+                  >
                     <Input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
