@@ -12,6 +12,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MessageSquare, Send, User } from "lucide-react";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface CV {
   realId: string;
@@ -26,19 +29,27 @@ interface Message {
 }
 
 interface ChatWithCVProps {
-  initialCvId?: string;
+  initialFileName?: string;
   showInstructions?: boolean;
 }
 
 export function ChatWithCV({
-  initialCvId = "",
+  initialFileName = "",
   showInstructions = false,
 }: ChatWithCVProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [cvs, setCvs] = useState<CV[]>([]);
-  const [selectedCV, setSelectedCV] = useState<string>(initialCvId);
-  const [messages, setMessages] = useState<Message[]>(
-    initialCvId ? [{ role: "assistant", content: "How can I help you" }] : []
-  );
+  const [selectedCV, setSelectedCV] = useState<string>(() => {
+    const urlFileName = searchParams.get("fileName");
+    return (
+      urlFileName ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("lastSelectedFileName") || initialFileName
+        : initialFileName)
+    );
+  });
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -49,24 +60,128 @@ export function ChatWithCV({
     const fetchCvs = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) {
+          toast.error("Please log in to view CVs");
+          return;
+        }
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
-        if (!response.ok) throw new Error("Failed to fetch CVs");
-        const data = await response.json();
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Fetch CVs failed: ${response.status} - ${errorText}`);
+          throw new Error(`Failed to fetch CVs: ${errorText}`);
+        }
+       const data = await response.json();
+        console.log("Fetched CVs:", data); // Debug CV list
         setCvs(data);
-        if (initialCvId && data.some((cv: CV) => cv.realId === initialCvId)) {
-          setSelectedCV(initialCvId);
-          setMessages([{ role: "assistant", content: "How can I help you" }]);
+        if (!Array.isArray(data) || data.length === 0) {
+          console.warn("No CVs returned from /cv");
+          setCvs([]);
+          setSelectedCV("");
+          toast.warn("No CVs available. Please upload a CV.");
+          return;
+        }
+        setCvs(data);
+        const urlFileName = searchParams.get("fileName");
+        if (urlFileName && data.some((cv: CV) => cv.fileName === urlFileName)) {
+          console.log(`URL fileName ${urlFileName} found in CV list`);
+          setSelectedCV(urlFileName);
+          localStorage.setItem("lastSelectedFileName", urlFileName);
+        } else if (urlFileName) {
+          console.warn(`URL fileName ${urlFileName} not found in CV list`);
+          toast.error("Selected CV not found");
+          setSelectedCV(data[0]?.fileName || "");
+          if (data[0]?.fileName) {
+            localStorage.setItem("lastSelectedFileName", data[0].fileName);
+            router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
+          }
+        } else if (data[0]?.fileName) {
+          console.log(`Setting default CV to ${data[0].fileName}`);
+          setSelectedCV(data[0].fileName);
+          localStorage.setItem("lastSelectedFileName", data[0].fileName);
+          router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
+        toast.error("Failed to load CVs. Please try again.");
+        setCvs([]);
+        setSelectedCV("");
       }
     };
     fetchCvs();
-  }, [initialCvId, showInstructions]);
+  }, [initialFileName, showInstructions, searchParams, router]);
+
+  useEffect(() => {
+    if (!selectedCV || showInstructions) return;
+
+    const controller = new AbortController();
+    const fetchChatHistory = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          toast.error("Please log in to view chat history");
+          return;
+        }
+        console.log(`Fetching chat history for fileName: ${selectedCV}`); // Debug selectedCV
+        setMessages([]); // Clear messages to avoid blinking
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(
+            selectedCV
+          )}/chat-history`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            signal: controller.signal,
+          }
+        );
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `Chat history fetch failed: ${response.status} - ${errorText}`
+          );
+          if (response.status === 404) {
+            console.log(`No chat history found for fileName: ${selectedCV}`);
+            setMessages([
+              { role: "assistant", content: "How can I help you?" },
+            ]);
+            return;
+          } else if (response.status === 403) {
+            toast.error("You are not authorized to view this chat history");
+            return;
+          } else if (response.status === 401) {
+            toast.error("Session expired. Please log in again.");
+            localStorage.removeItem("token");
+            router.push("/login");
+            return;
+          }
+          throw new Error(`Failed to fetch chat history: ${errorText}`);
+        }
+        const data = await response.json();
+        console.log("Chat history response:", data); // Debug response
+        const historyMessages: Message[] = data.flatMap(
+          (entry: { query: string; response: string }) => [
+            { role: "user", content: entry.query },
+            { role: "assistant", content: entry.response },
+          ]
+        );
+        setMessages([
+          { role: "assistant", content: "How can I help you?" },
+          ...historyMessages,
+        ]);
+      } catch (error: any) {
+        if (error.name === "AbortError") return;
+        console.error("Error fetching chat history:", error);
+        toast.error("Failed to load chat history. Please try again.");
+        setMessages([{ role: "assistant", content: "How can I help you?" }]);
+      }
+    };
+    fetchChatHistory();
+    return () => controller.abort();
+  }, [selectedCV, showInstructions, router]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -83,8 +198,16 @@ export function ChatWithCV({
 
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Please log in to send messages");
+        setMessages((prev) => prev.slice(0, -1));
+        setIsLoading(false);
+        return;
+      }
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/cv/${selectedCV}/chat`,
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(
+          selectedCV
+        )}/chat`,
         {
           method: "POST",
           headers: {
@@ -96,12 +219,14 @@ export function ChatWithCV({
       );
       if (!response.ok) {
         const text = await response.text();
+        console.error(`Send message failed: ${response.status} - ${text}`);
         throw new Error(
           response.status === 404 ? "CV not found" : "Failed to send message"
         );
       }
 
       const data = await response.json();
+      console.log("Send message response:", data); // Debug response
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.response },
@@ -111,6 +236,7 @@ export function ChatWithCV({
       if (error instanceof Error) {
         errorMessage = error.message;
       }
+      console.error("Error sending message:", errorMessage);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `Error: ${errorMessage}` },
@@ -145,113 +271,121 @@ export function ChatWithCV({
               </ol>
             </div>
           ) : (
-            <Select
-              value={selectedCV}
-              onValueChange={(value) => {
-                setSelectedCV(value);
-                setMessages([
-                  { role: "assistant", content: "How can I help you" },
-                ]);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a CV" />
-              </SelectTrigger>
-              <SelectContent>
-                {cvs.map((cv) => (
-                  <SelectItem key={cv.realId} value={cv.realId}>
-                    {cv.fileName} {cv.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {selectedCV ? (
             <>
-              <div className="border rounded-md p-4 h-[300px] overflow-y-auto bg-white">
-                {messages.length === 0 && !isLoading ? (
-                  <div className="text-center text-muted-foreground h-full flex items-center justify-center">
-                    <p>Start chatting about the selected CV</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={`flex ${
-                          message.role === "user"
-                            ? "justify-end"
-                            : "justify-start"
-                        }`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-lg px-4 py-2 shadow-md ${
-                            message.role === "user"
-                              ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
-                              : "bg-purple-50 text-purple-800"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            {message.role === "user" ? (
-                              <>
-                                <span className="font-medium">You</span>
-                                <User size={14} />
-                              </>
-                            ) : (
-                              <>
+              <Select
+                value={selectedCV}
+                onValueChange={(value) => {
+                  console.log(`Selecting CV with fileName: ${value}`); // Debug selection
+                  setSelectedCV(value);
+                  localStorage.setItem("lastSelectedFileName", value);
+                  router.push(
+                    `/admin/chat?fileName=${encodeURIComponent(value)}`,
+                    { scroll: false }
+                  );
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a CV" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cvs.map((cv) => (
+                    <SelectItem key={cv.fileName} value={cv.fileName}>
+                      {cv.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedCV && (
+                <>
+                  <div className="border rounded-md p-4 h-[300px] overflow-y-auto bg-white">
+                    {messages.length === 0 && !isLoading ? (
+                      <div className="text-center text-muted-foreground h-full flex items-center justify-center">
+                        <p>Start chatting about the selected CV</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {messages.map((message, index) => (
+                          <div
+                            key={index}
+                            className={`flex ${
+                              message.role === "user"
+                                ? "justify-end"
+                                : "justify-start"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[80%] rounded-lg px-4 py-2 shadow-md ${
+                                message.role === "user"
+                                  ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
+                                  : "bg-purple-50 text-purple-800"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                {message.role === "user" ? (
+                                  <>
+                                    <span className="font-medium">You</span>
+                                    <User size={14} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-medium">
+                                      AI Assistant
+                                    </span>
+                                    <MessageSquare size={14} />
+                                  </>
+                                )}
+                              </div>
+                              <p>{message.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                        {isLoading && (
+                          <div className="flex justify-start">
+                            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
+                              <div className="flex items-center gap-2 mb-1">
                                 <span className="font-medium">
                                   AI Assistant
                                 </span>
                                 <MessageSquare size={14} />
-                              </>
-                            )}
-                          </div>
-                          <p>{message.content}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">AI Assistant</span>
-                            <MessageSquare size={14} />
-                          </div>
-                          <div className="flex items-center gap-2 text-2xl text-black">
-                            <span className="">●</span>
-                            <span className=" delay-200">●</span>
-                            <span className=" delay-400">●</span>
-                            <div className="text-xs text-center text-purple-400 mt-1">
-                              is thinking
+                              </div>
+                              <div className="flex items-center gap-2 text-2xl text-black">
+                                <span className="">●</span>
+                                <span className=" delay-200">●</span>
+                                <span className=" delay-400">●</span>
+                                <div className="text-xs text-center text-purple-400 mt-1">
+                                  is thinking
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
+                        <div ref={messagesEndRef} />
                       </div>
                     )}
-                    <div ref={messagesEndRef} />
                   </div>
-                )}
-              </div>
-
-              <form onSubmit={handleSendMessage} className="flex gap-2 mt-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask a question about this CV..."
-                  disabled={isLoading}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={isLoading || !input.trim()}
-                  className="bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
-                >
-                  <Send size={18} className="text-white" />
-                </Button>
-              </form>
+                  <form
+                    onSubmit={handleSendMessage}
+                    className="flex gap-2 mt-2"
+                  >
+                    <Input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="Ask a question about this CV..."
+                      disabled={isLoading}
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      disabled={isLoading || !input.trim()}
+                      className="bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
+                    >
+                      <Send size={18} className="text-white" />
+                    </Button>
+                  </form>
+                </>
+              )}
             </>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </Card>

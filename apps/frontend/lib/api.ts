@@ -10,7 +10,7 @@ export async function fetchWithAuth(
   if (!token) {
     if (router) {
       localStorage.removeItem("token");
-      router.push("/login");
+      router.push("/");
     }
     throw new Error("No authentication token found");
   }
@@ -28,7 +28,7 @@ export async function fetchWithAuth(
   if (response.status === 401 || response.status === 403) {
     localStorage.removeItem("token");
     if (router) {
-      router.push("/login");
+      router.push("/");
     }
     throw new Error("Session expired. Please log in again.");
   }

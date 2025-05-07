@@ -9,13 +9,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 
-
 interface UploadCVProps {
   onUploadSuccess?: () => void;
 }
 
 export function UploadCV({ onUploadSuccess }: UploadCVProps) {
   const [file, setFile] = useState<File | null>(null);
+  const [cvName, setCvName] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<{
     type: "success" | "error" | null;
@@ -51,7 +51,12 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
     }
 
     if (!file.name.toLowerCase().endsWith(".pdf")) {
-      toast.error("Only PDF files are accepted" );
+      toast.error("Only PDF files are accepted");
+      return;
+    }
+
+    if (!cvName.trim()) {
+      toast.error("Please enter a name or note for the CV");
       return;
     }
 
@@ -65,14 +70,18 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("name", cvName);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv/upload`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         if (response.status === 400) {
@@ -92,6 +101,8 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+      setFile(null);
+      setCvName("");
 
       // Notify parent of successful upload
       if (onUploadSuccess) {
@@ -102,8 +113,7 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       router.push(`/admin/chat?cvId=${data.cvId}`);
     } catch (error: any) {
       console.error("Error uploading CV:", error);
-      toast.error(error.message || "Failed to upload CV. Please try again."
-      );
+      toast.error(error.message || "Failed to upload CV. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -119,6 +129,23 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleUpload} className="space-y-6">
+          <div>
+            <label
+              htmlFor="cv-name"
+              className="block text-sm font-bold mb-2 text-gray-700 mb-1"
+            >
+              Add A Name or Note
+            </label>
+            <Input
+              id="cv-name"
+              type="text"
+              value={cvName}
+              onChange={(e) => setCvName(e.target.value)}
+              placeholder="Enter CV owner name or note"
+              className="w-full"
+              disabled={uploading}
+            />
+          </div>
           <div className="flex items-center justify-center w-full">
             <label
               htmlFor="dropzone-file"

@@ -45,7 +45,7 @@ export function CVList({ refreshKey = 0 }: CVListProps) {
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           localStorage.removeItem("token");
-          router.push("/login");
+          router.push("/");
           throw new Error("Session expired. Please log in again.");
         }
         throw new Error("Failed to fetch CVs");
@@ -93,7 +93,7 @@ export function CVList({ refreshKey = 0 }: CVListProps) {
           throw new Error("CV not found");
         } else if (response.status === 401 || response.status === 403) {
           localStorage.removeItem("token");
-          router.push("/login");
+          router.push("/");
           throw new Error("You are not authorized to delete this CV");
         } else {
           throw new Error("Failed to delete CV");

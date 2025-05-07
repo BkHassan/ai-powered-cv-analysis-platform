@@ -18,7 +18,7 @@ export class SignupDto {
   email: string;
 
   @IsNotEmpty({ message: 'Password is required' })
-  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, {
+  @Matches(/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/, {
     message:
       'Password must be at least 8 characters long, contain one uppercase letter, one number, and one special character',
   })

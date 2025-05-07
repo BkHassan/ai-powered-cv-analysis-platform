@@ -43,21 +43,26 @@ export class CvController {
       throw new BadRequestException('Only PDF files are accepted');
     }
     const uploaderEmail = req.user.email;
+    const name = req.body.name;
+    if (!name || typeof name !== 'string' || name.trim().length === 0){
+      this.logger.error('No valid name provided in request');
+      throw new BadRequestException('CV name or note is required'); 
+    }
     this.logger.log(
-      `Uploading CV for ${uploaderEmail}, file: ${file.originalname}`,
+      `Uploading CV for ${uploaderEmail}, file: ${file.originalname}, name: ${name}`,
     );
-    return this.cvService.uploadCv(uploaderEmail, file);
+    return this.cvService.uploadCv(uploaderEmail, file, name);
   }
 
-  @Get(':cvId')
+  @Get(':fileName')
   async getCv(
-    @Param('cvId') cvId: string,
+    @Param('fileName') fileName: string,
     @Request() req,
     @Res() res: Response,
   ) {
-    this.logger.log(`Get CV ${cvId} request by ${req.user.email}`);
-    const { filePath, fileName } = await this.cvService.getCv(
-      cvId,
+    this.logger.log(`Get CV ${fileName} request by ${req.user.email}`);
+    const { filePath, fileName: resolvedFileName } = await this.cvService.getCv(
+      fileName,
       req.user.email,
       req.user.role,
     );
@@ -84,24 +89,30 @@ export class CvController {
     return this.cvService.listCvs(req.user.role, req.user.email);
   }
 
-  @Post(':cvId/chat')
+  @Post(':fileName/chat')
   @UseGuards(JwtAuthGuard)
   async chatCv(
-    @Param('cvId') cvId: string,
+    @Param('fileName') fileName: string,
     @Body() chatCvDto: ChatCvDto,
     @Request() req,
   ) {
-    this.logger.log(`Chat CV ${cvId} request by ${req.user.email}`);
+    this.logger.log(`Chat CV ${fileName} request by ${req.user.email}`);
     if (!chatCvDto.message) {
       this.logger.warn('Missing message in chatCvDto');
       throw new BadRequestException('Message is required');
     }
     return this.cvService.chatCv(
-      cvId,
+      fileName,
       chatCvDto,
       req.user.email,
       req.user.role,
     );
+  }
+  
+  @Get(':fileName/chat-history')
+  async getChatHistory(@Param('fileName') fileName: string, @Request() req: any) {
+    const user = req.user as { email: string; role: string };
+    return this.cvService.getChatHistory(fileName, user.email, user.role);
   }
 }
 

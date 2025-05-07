@@ -9,13 +9,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Download, MessageSquare } from "lucide-react";
 import Link from "next/link";
 
-export default function CVDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function CVDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<
+    { query: string; response: string; timestamp: string }[]
+  >([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -33,19 +40,24 @@ export default function CVDetailPage({ params }: { params: Promise<{ id: string 
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv/${id}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/cv/${id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error("CV not found");
           } else if (response.status === 401 || response.status === 403) {
             localStorage.removeItem("token");
-            router.push("/login");
-            throw new Error("Session expired or unauthorized. Please log in again.");
+            router.push("/");
+            throw new Error(
+              "Session expired or unauthorized. Please log in again."
+            );
           } else {
             throw new Error("Failed to load CV");
           }
@@ -69,8 +81,31 @@ export default function CVDetailPage({ params }: { params: Promise<{ id: string 
       }
     };
 
+    const fetchChatHistory = async () => {
+      if (!token) return;
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/cv/${id}/chat-history`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          if (response.status === 404) return; // CV has no chat history yet
+          throw new Error("Failed to fetch chat history");
+        }
+        const data = await response.json();
+        setChatHistory(data.slice(-3)); // Show last 3 messages
+      } catch (err) {
+        console.error("Error fetching chat history:", err);
+      }
+    };
+
     if (token) {
       fetchCV();
+      fetchChatHistory();
     }
 
     // Cleanup blob URL on unmount
@@ -79,7 +114,7 @@ export default function CVDetailPage({ params }: { params: Promise<{ id: string 
         window.URL.revokeObjectURL(pdfUrl);
       }
     };
-  }, [id, token]);
+  }, [id, token, pdfUrl]);
 
   const handleDownload = () => {
     if (pdfUrl && fileName) {
@@ -141,6 +176,29 @@ export default function CVDetailPage({ params }: { params: Promise<{ id: string 
                 </Button>
               </div>
             </div>
+
+            {chatHistory.length > 0 && (
+              <Card className="mb-6">
+                <CardContent className="pt-6">
+                  <h2 className="text-xl font-semibold mb-4">
+                    Recent Chat History
+                  </h2>
+                  <div className="space-y-4">
+                    {chatHistory.map((entry, index) => (
+                      <div key={index} className="border-b pb-2">
+                        <p className="font-medium">You: {entry.query}</p>
+                        <p className="text-muted-foreground">
+                          AI: {entry.response}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(entry.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardContent className="pt-6">
