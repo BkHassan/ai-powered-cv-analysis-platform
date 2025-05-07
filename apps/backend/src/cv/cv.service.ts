@@ -21,6 +21,7 @@ import {
   RunnablePassthrough,
 } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
+import * as crypto from 'crypto';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -124,20 +125,19 @@ export class CvService {
   async uploadCv(
     uploaderEmail: string,
     file: Express.Multer.File,
+    name: string,
   ): Promise<{ cvId: string }> {
     try {
       const absoluteUploadFolder = path.resolve(this.uploadFolder);
       this.logger.log(`Upload folder path: ${absoluteUploadFolder}`);
-
+  
       if (!fs.existsSync(this.uploadFolder)) {
         fs.mkdirSync(this.uploadFolder, { recursive: true });
         this.logger.log(`Created upload folder: ${absoluteUploadFolder}`);
       }
-
-      // Check for duplicate CV by filename
-      const fileNameWithoutExt = file.originalname
-        .replace(/\.pdf$/, '')
-        .toLowerCase();
+  
+      // Check for duplicate CV by provided name
+      const nameLower = name.toLowerCase();
       const existingCvs = await this.cvCollection.get({
         where: { uploadedBy: uploaderEmail },
       });
@@ -148,27 +148,32 @@ export class CvService {
       );
       const duplicateCv = existingCvs.documents.find(
         (doc: string) =>
-          JSON.parse(doc).name?.toLowerCase() === fileNameWithoutExt,
+          JSON.parse(doc).name?.toLowerCase() === nameLower,
       );
       if (duplicateCv) {
         this.logger.warn(
-          `Duplicate CV detected for ${uploaderEmail}, filename: ${file.originalname}`,
+          `Duplicate CV detected for ${uploaderEmail}, name: ${name}`,
         );
-        throw new BadRequestException('CV already exists');
+        throw new BadRequestException('CV with this name already exists');
       }
-
+  
+      // Generate hashed filename
+      const hash = crypto
+        .createHash('sha256')
+        .update(file.originalname + Date.now().toString())
+        .digest('hex');
       const cvId = await this.generateCvId();
-      const fileName = `${cvId}_${file.originalname}`;
+      const fileName = `${cvId}_${hash}.pdf`;
       const filePath = path.join(this.uploadFolder, fileName);
       this.logger.log(`Saving CV to: ${path.resolve(filePath)}`);
-
+  
       fs.writeFileSync(filePath, file.buffer);
       this.logger.log(`CV file saved to: ${filePath}`);
-
+  
       // Store original CV metadata (for compatibility with listCvs, getCv)
       const cvDocument = JSON.stringify({
         uploadDate: new Date().toISOString(),
-        name: fileNameWithoutExt,
+        name: name,
         fileName: fileName,
       });
 
@@ -198,7 +203,7 @@ export class CvService {
           text: chunk,
           cvId,
           uploadDate: new Date().toISOString(),
-          name: fileNameWithoutExt,
+          name: name,
           fileName,
         }),
       );

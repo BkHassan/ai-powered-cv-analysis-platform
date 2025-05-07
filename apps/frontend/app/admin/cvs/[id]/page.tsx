@@ -54,7 +54,7 @@ export default function CVDetailPage({
             throw new Error("CV not found");
           } else if (response.status === 401 || response.status === 403) {
             localStorage.removeItem("token");
-            router.push("/login");
+            router.push("/");
             throw new Error(
               "Session expired or unauthorized. Please log in again."
             );

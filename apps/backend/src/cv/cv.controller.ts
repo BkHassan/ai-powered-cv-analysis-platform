@@ -43,10 +43,15 @@ export class CvController {
       throw new BadRequestException('Only PDF files are accepted');
     }
     const uploaderEmail = req.user.email;
+    const name = req.body.name;
+    if (!name || typeof name !== 'string' || name.trim().length === 0){
+      this.logger.error('No valid name provided in request');
+      throw new BadRequestException('CV name or note is required'); 
+    }
     this.logger.log(
-      `Uploading CV for ${uploaderEmail}, file: ${file.originalname}`,
+      `Uploading CV for ${uploaderEmail}, file: ${file.originalname}, name: ${name}`,
     );
-    return this.cvService.uploadCv(uploaderEmail, file);
+    return this.cvService.uploadCv(uploaderEmail, file, name);
   }
 
   @Get(':cvId')

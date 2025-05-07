@@ -14,7 +14,7 @@ import {
 import { MessageSquare, Send, User } from "lucide-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-
+import { useRouter } from "next/navigation";
 
 interface CV {
   realId: string;
@@ -37,8 +37,13 @@ export function ChatWithCV({
   initialCvId = "",
   showInstructions = false,
 }: ChatWithCVProps) {
+  const router = useRouter();
   const [cvs, setCvs] = useState<CV[]>([]);
-  const [selectedCV, setSelectedCV] = useState<string>(initialCvId);
+  const [selectedCV, setSelectedCV] = useState<string>(() => {
+    return typeof window !== "undefined"
+      ? localStorage.getItem("lastSelectedCvId") || initialCvId
+      : initialCvId;
+  });
   const [messages, setMessages] = useState<Message[]>(
     initialCvId ? [{ role: "assistant", content: "How can I help you" }] : []
   );
@@ -110,7 +115,6 @@ export function ChatWithCV({
             return;
           }
           throw new Error("Failed to fetch chat history");
-        if (!response.ok) throw new Error("Failed to fetch chat history");
         }
         const data = await response.json();
         const historyMessages: Message[] = data.flatMap(
@@ -237,113 +241,113 @@ export function ChatWithCV({
               </ol>
             </div>
           ) : (
-            <Select
-              value={selectedCV}
-              onValueChange={(value) => {
-                setSelectedCV(value);
-                setMessages([
-                  { role: "assistant", content: "How can I help you" },
-                ]);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a CV" />
-              </SelectTrigger>
-              <SelectContent>
-                {cvs.map((cv) => (
-                  <SelectItem key={cv.realId} value={cv.realId}>
-                    {cv.fileName} {cv.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {selectedCV ? (
             <>
-              <div className="border rounded-md p-4 h-[300px] overflow-y-auto bg-white">
-                {messages.length === 0 && !isLoading ? (
-                  <div className="text-center text-muted-foreground h-full flex items-center justify-center">
-                    <p>Start chatting about the selected CV</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={`flex ${
-                          message.role === "user"
-                            ? "justify-end"
-                            : "justify-start"
-                        }`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-lg px-4 py-2 shadow-md ${
-                            message.role === "user"
-                              ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
-                              : "bg-purple-50 text-purple-800"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            {message.role === "user" ? (
-                              <>
-                                <span className="font-medium">You</span>
-                                <User size={14} />
-                              </>
-                            ) : (
-                              <>
-                                <span className="font-medium">
-                                  AI Assistant
-                                </span>
-                                <MessageSquare size={14} />
-                              </>
-                            )}
-                          </div>
-                          <p>{message.content}</p>
-                        </div>
+              <Select
+                value={selectedCV}
+                onValueChange={(value) => {
+                  setSelectedCV(value);
+                  localStorage.setItem("lastSelectedCvId", value);
+                  router.push(`/admin/chat?cvId=${value}`, { scroll: false });
+                  setMessages([{ role: "assistant", content: "How can I help you" }]);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a CV" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cvs.map((cv) => (
+                    <SelectItem key={cv.realId} value={cv.realId}>
+                      {cv.fileName} {cv.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedCV && (
+                <>
+                  <div className="border rounded-md p-4 h-[300px] overflow-y-auto bg-white">
+                    {messages.length === 0 && !isLoading ? (
+                      <div className="text-center text-muted-foreground h-full flex items-center justify-center">
+                        <p>Start chatting about the selected CV</p>
                       </div>
-                    ))}
-                    {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">AI Assistant</span>
-                            <MessageSquare size={14} />
-                          </div>
-                          <div className="flex items-center gap-2 text-2xl text-black">
-                            <span className="">●</span>
-                            <span className=" delay-200">●</span>
-                            <span className=" delay-400">●</span>
-                            <div className="text-xs text-center text-purple-400 mt-1">
-                              is thinking
+                    ) : (
+                      <div className="space-y-4">
+                        {messages.map((message, index) => (
+                          <div
+                            key={index}
+                            className={`flex ${
+                              message.role === "user"
+                                ? "justify-end"
+                                : "justify-start"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[80%] rounded-lg px-4 py-2 shadow-md ${
+                                message.role === "user"
+                                  ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
+                                  : "bg-purple-50 text-purple-800"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                {message.role === "user" ? (
+                                  <>
+                                    <span className="font-medium">You</span>
+                                    <User size={14} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-medium">
+                                      AI Assistant
+                                    </span>
+                                    <MessageSquare size={14} />
+                                  </>
+                                )}
+                              </div>
+                              <p>{message.content}</p>
                             </div>
                           </div>
-                        </div>
+                        ))}
+                        {isLoading && (
+                          <div className="flex justify-start">
+                            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium">AI Assistant</span>
+                                <MessageSquare size={14} />
+                              </div>
+                              <div className="flex items-center gap-2 text-2xl text-black">
+                                <span className="">●</span>
+                                <span className=" delay-200">●</span>
+                                <span className=" delay-400">●</span>
+                                <div className="text-xs text-center text-purple-400 mt-1">
+                                  is thinking
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
                       </div>
                     )}
-                    <div ref={messagesEndRef} />
                   </div>
-                )}
-              </div>
-
-              <form onSubmit={handleSendMessage} className="flex gap-2 mt-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask a question about this CV..."
-                  disabled={isLoading}
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={isLoading || !input.trim()}
-                  className="bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
-                >
-                  <Send size={18} className="text-white" />
-                </Button>
-              </form>
+                  <form onSubmit={handleSendMessage} className="flex gap-2 mt-2">
+                    <Input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="Ask a question about this CV..."
+                      disabled={isLoading}
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      disabled={isLoading || !input.trim()}
+                      className="bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
+                    >
+                      <Send size={18} className="text-white" />
+                    </Button>
+                  </form>
+                </>
+              )}
             </>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </Card>
