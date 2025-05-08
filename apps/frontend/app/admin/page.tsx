@@ -55,10 +55,6 @@ export default function AdminDashboard() {
               <ChatWithCV showInstructions={true} />
             </div>
           </section>
-
-          <section className="p-6">
-            <CVList refreshKey={refreshKey} />
-          </section>
         </div>
       </main>
     </div>
