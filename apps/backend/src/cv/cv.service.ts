@@ -194,7 +194,7 @@ export class CvService {
     uploaderEmail: string,
     file: Express.Multer.File,
     name: string,
-  ): Promise<{ cvId: string }> {
+  ): Promise<{ cvId: string; fileName: string }> {
     try {
       const absoluteUploadFolder = path.resolve(this.uploadFolder);
       this.logger.log(`Upload folder path: ${absoluteUploadFolder}`);
@@ -295,7 +295,7 @@ export class CvService {
         `Stored ${chunks.length} chunks for CV ${cvId} in ChromaDB`,
       );
 
-      return { cvId };
+      return { cvId, fileName };
     } catch (error) {
       this.logger.error('CV upload failed', error.stack, error.message);
       throw error;
