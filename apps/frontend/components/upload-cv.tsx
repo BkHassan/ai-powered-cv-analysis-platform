@@ -110,7 +110,13 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
       }
 
       // Redirect to chat with new CV
-      router.push(`/admin/chat?cvId=${data.cvId}`);
+      if (data?.fileName) {
+        const cleanFileName = data.fileName.replace(".pdf", "");
+        router.push(`/admin/chat/${cleanFileName}`);
+      } else {
+        console.error("No fileName in response:", data);
+        toast.error("Upload succeeded but couldn't redirect");
+      }
     } catch (error: any) {
       console.error("Error uploading CV:", error);
       toast.error(error.message || "Failed to upload CV. Please try again.");

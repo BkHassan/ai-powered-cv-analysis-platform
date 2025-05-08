@@ -16,6 +16,7 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.0",
     "@nestjs/platform-express": "^11.0.20",
+    "@sendgrid/mail": "^8.1.5",
     "@types/node": "^22.14.1",
     "bcryptjs": "^3.0.2",
     "chromadb": "^1.9.2",

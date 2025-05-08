@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import {
   User,
   Mail,
   Calendar,
+  FileText,
 } from "lucide-react";
 import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +27,8 @@ interface CV {
   email: string;
   uploadDate: string;
   fileName: string;
+  quizStatus?: "not_generated" | "generated" | "completed";
+  quizScore?: number;
 }
 
 interface CVCardProps {
@@ -57,6 +60,18 @@ function CVCard({ cv, onDelete }: CVCardProps) {
             }).format(new Date(cv.uploadDate))}
           </span>
         </div>
+        <div className="flex items-center gap-2 text-gray-700">
+          <FileText size={16} />
+
+          <span className="text-sm">
+            Quiz:{" "}
+            {cv.quizStatus === "completed"
+              ? `Completed (${cv.quizScore !== undefined ? `${cv.quizScore}%` : "Score unavailable"})`
+              : cv.quizStatus === "generated"
+              ? "Generated"
+              : "Not Generated"}
+          </span>
+        </div>
         <div className="flex gap-2 mt-4">
           <Button
             variant="outline"
@@ -76,7 +91,7 @@ function CVCard({ cv, onDelete }: CVCardProps) {
             asChild
           >
             <Link
-              href={`/admin/chat?fileName=${encodeURIComponent(cv.fileName)}`}
+              href={`/admin/chat?fileName=${(cv.fileName)}`}
             >
               <MessageSquare className="h-4 w-4 mr-1" />
               Chat
@@ -110,6 +125,10 @@ function CVCardSkeleton() {
         <div className="flex items-center gap-2">
           <Skeleton className="h-4 w-4 rounded-full" />
           <Skeleton className="h-4 w-40" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-4 rounded-full" />
+          <Skeleton className="h-4 w-24" />
         </div>
         <div className="flex items-center gap-2">
           <Skeleton className="h-4 w-4 rounded-full" />
@@ -156,12 +175,12 @@ export function CVList({ refreshKey = 0 }: CVListProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Simulate loading state for demonstration
-  useState(() => {
+  useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
     return () => clearTimeout(timer);
-  });
+  }, []);
 
   const filteredCVs = cvs.filter(
     (cv) =>

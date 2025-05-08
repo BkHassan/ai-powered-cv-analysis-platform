@@ -44,9 +44,9 @@ export class CvController {
     }
     const uploaderEmail = req.user.email;
     const name = req.body.name;
-    if (!name || typeof name !== 'string' || name.trim().length === 0){
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
       this.logger.error('No valid name provided in request');
-      throw new BadRequestException('CV name or note is required'); 
+      throw new BadRequestException('CV name or note is required');
     }
     this.logger.log(
       `Uploading CV for ${uploaderEmail}, file: ${file.originalname}, name: ${name}`,
@@ -108,11 +108,108 @@ export class CvController {
       req.user.role,
     );
   }
-  
+
   @Get(':fileName/chat-history')
-  async getChatHistory(@Param('fileName') fileName: string, @Request() req: any) {
+  async getChatHistory(
+    @Param('fileName') fileName: string,
+    @Request() req: any,
+  ) {
     const user = req.user as { email: string; role: string };
     return this.cvService.getChatHistory(fileName, user.email, user.role);
   }
+
+  @Get(':fileName/skills')
+  async getCvSkills(@Param('fileName') fileName: string) {
+    this.logger.log(`Get CV skills for ${fileName}`);
+    return this.cvService.getCvSkills(fileName);
+  }
 }
 
+@Controller('quiz')
+export class QuizController {
+  private readonly logger = new Logger(QuizController.name);
+  constructor(private readonly cvService: CvService) {}
+
+  @Post('generate')
+  @UseGuards(JwtAuthGuard)
+  async generateQuiz(@Body() body: { fileName: string }, @Request() req: any) {
+    this.logger.log(`Generate quiz for ${body.fileName} by ${req.user.email}`);
+    if (!body.fileName) {
+      this.logger.warn('Missing fileName in request body');
+      throw new BadRequestException('fileName is required');
+    }
+    return this.cvService.generateQuiz(
+      body.fileName,
+      req.user.email,
+      req.user.role,
+    );
+  }
+
+  @Get(':quizId')
+  async getQuiz(@Param('quizId') quizId: string) {
+    this.logger.log(`Retrieving quiz for quizId: ${quizId}`);
+    try {
+      const quiz = await this.cvService.getQuiz(quizId);
+      this.logger.log(`Quiz retrieved: ${quizId}`);
+      return quiz;
+    } catch (error) {
+      this.logger.error(
+        `Quiz retrieval failed: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  @Get(':quizId/results')
+  @UseGuards(JwtAuthGuard)
+  async getQuizResults(@Param('quizId') quizId: string, @Request() req: any) {
+    this.logger.log(`Get quiz results for ${quizId} by ${req.user.email}`);
+    return this.cvService.getQuizResults(quizId, req.user.email, req.user.role);
+  }
+
+  @Post(':quizId/submit')
+  async submitQuizAnswers(
+    @Param('quizId') quizId: string,
+    @Body()
+    body: { answers: { [questionId: string]: number }; timeTaken: number },
+  ) {
+    this.logger.log(`Submit quiz answers for ${quizId}`);
+    if (!body.answers || !body.timeTaken) {
+      this.logger.warn('Missing answers or timeTaken in request body');
+      throw new BadRequestException('Answers and timeTaken are required');
+    }
+    return this.cvService.submitQuizAnswers(
+      quizId,
+      body.answers,
+      body.timeTaken,
+    );
+  }
+}
+
+@Controller('email')
+@UseGuards(JwtAuthGuard)
+export class EmailController {
+  private readonly logger = new Logger(EmailController.name);
+
+  constructor(private readonly cvService: CvService) {}
+
+  @Post('quiz')
+  async sendQuizEmail(
+    @Body() body: { email: string; quizLink: string },
+    @Request() req: any,
+  ) {
+    this.logger.log(`Send quiz email to ${body.email} by ${req.user.email}`);
+    if (!body.email || !body.quizLink) {
+      this.logger.warn('Missing email or quizLink in request body');
+      throw new BadRequestException('Email and quizLink are required');
+    }
+    await this.cvService.sendQuizEmail(
+      body.email,
+      body.quizLink,
+      req.user.email,
+      req.user.role,
+    );
+    return { message: 'Quiz email sent successfully' };
+  }
+}
