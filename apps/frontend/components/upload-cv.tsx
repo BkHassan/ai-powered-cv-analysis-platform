@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 
 interface UploadCVProps {
-  onUploadSuccess?: () => void;
+  onUploadSuccess?: (fileName: string) => void;
 }
 
 export function UploadCV({ onUploadSuccess }: UploadCVProps) {
@@ -106,17 +106,11 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
 
       // Notify parent of successful upload
       if (onUploadSuccess) {
-        onUploadSuccess();
+        onUploadSuccess(data.fileName);
       }
 
       // Redirect to chat with new CV
-      if (data?.fileName) {
-        const cleanFileName = data.fileName.replace(".pdf", "");
-        router.push(`/admin/chat/${cleanFileName}`);
-      } else {
-        console.error("No fileName in response:", data);
-        toast.error("Upload succeeded but couldn't redirect");
-      }
+      router.push(`/admin/chat?fileName=${data.fileName}`);
     } catch (error: any) {
       console.error("Error uploading CV:", error);
       toast.error(error.message || "Failed to upload CV. Please try again.");

@@ -7,7 +7,6 @@ export default function CVListPage() {
       <Navbar />
 
       <main className="container mx-auto pt-24 pb-10 px-4">
-
         <CVList />
       </main>
     </div>

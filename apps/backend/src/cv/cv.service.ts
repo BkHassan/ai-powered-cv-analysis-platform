@@ -21,7 +21,6 @@ import {
 } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import * as crypto from 'crypto';
-import * as sgMail from '@sendgrid/mail';
 import { v4 as uuidv4 } from 'uuid';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
@@ -77,14 +76,11 @@ export class CvService {
     private readonly configService: ConfigService,
   ) {
     this.embeddingFunction = new GeminiEmbeddingFunction(configService);
-    this.chromaClient = new ChromaClient({ path: 'http://chromadb:8000' });
-
-    const sendgridApiKey = this.configService.get<string>('SENDGRID_API_KEY');
-    if (!sendgridApiKey) {
-      this.logger.error('SENDGRID_API_KEY is not defined in .env');
-      throw new Error('SENDGRID_API_KEY is required');
-    }
-    sgMail.setApiKey(sendgridApiKey);
+    this.chromaClient = new ChromaClient({
+      path:
+        this.configService.get<string>('CHROMADB_URL') ||
+        'http://chromadb:8000',
+    });
     this.initializeCollections();
   }
 
@@ -135,12 +131,23 @@ export class CvService {
     }
   }
 
-  private async resolveFileNameToCvId(fileName: string): Promise<string> {
+  async resolveFileNameToCvId(
+    fileName: string,
+    retries = 3,
+    delay = 1000,
+  ): Promise<string> {
     try {
-      this.logger.debug(`Attempting to resolve fileName: ${fileName}`);
+      this.logger.debug(
+        `Attempting to resolve fileName: ${fileName} (Retries left: ${retries})`,
+      );
 
       // First try: get all documents and find the main CV
       const allCvs = await this.cvCollection.get();
+      this.logger.debug(
+        `Retrieved ${
+          allCvs.ids.length
+        } records from cvs collection: ${JSON.stringify(allCvs.ids)}`,
+      );
 
       // Find the main CV (non-chunk) document that matches the fileName
       for (let i = 0; i < allCvs.ids.length; i++) {
@@ -148,10 +155,15 @@ export class CvService {
 
         try {
           const doc = JSON.parse(allCvs.documents[i]!);
-          if (doc.fileName === fileName) {
+          if (doc.fileName.toLowerCase() === fileName.toLowerCase()) {
+            this.logger.debug(`Found matching main CV:
+              ${allCvs.ids[i]}`);
             return allCvs.ids[i];
           }
         } catch (e) {
+          this.logger.error(
+            `Failed to parse document for ID ${allCvs.ids[i]}: ${e.message}`,
+          );
           continue;
         }
       }
@@ -163,22 +175,37 @@ export class CvService {
           doc: doc,
         }))
         .filter((item) => item.id.includes('_chunk_'));
-
+      this.logger.debug(`Found ${chunks.length} chunks to check`);
       for (const chunk of chunks) {
         try {
           const parsedChunk = JSON.parse(chunk.doc!);
-          if (parsedChunk.fileName === fileName) {
+          this.logger.debug(
+            `Checking chunk ${chunk.id}: ${JSON.stringify(parsedChunk)}`,
+          );
+          if (parsedChunk.fileName.toLowerCase() === fileName.toLowerCase()) {
             // Extract the base cvId from the chunk id (e.g., "cv1_chunk_0" -> "cv1")
             const cvId = chunk.id.split('_chunk_')[0];
             this.logger.debug(`Found matching chunk, extracted cvId: ${cvId}`);
             return cvId;
           }
         } catch (e) {
+          this.logger.error(
+            `Failed to parse chunk document for ID ${chunk.id}: ${e.message}`,
+          );
           continue;
         }
       }
 
-      this.logger.warn(`No CV found for fileName: ${fileName}`);
+      if (retries > 0) {
+        this.logger.debug(
+          `No CV found for fileName: ${fileName}, retrying after ${delay}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.resolveFileNameToCvId(fileName, retries - 1, delay);
+      }
+      this.logger.warn(
+        `No CV found for fileName: ${fileName} after all retries`,
+      );
       throw new NotFoundException(`CV not found for fileName: ${fileName}`);
     } catch (error) {
       this.logger.error(
@@ -243,6 +270,7 @@ export class CvService {
         name: name,
         fileName: fileName,
       });
+      this.logger.debug(`Storing CV metadata for ${cvId}: ${cvDocument}`);
 
       await this.cvCollection.add({
         ids: [cvId],
@@ -250,7 +278,7 @@ export class CvService {
         metadatas: [{ uploadedBy: uploaderEmail }],
       });
       this.logger.log(`Stored CV metadata for ${cvId}`);
-
+      
       // Convert PDF to text and store chunks
       const text = await this.extractTextFromPdf(filePath);
       this.logger.log(`Extracted text length: ${text.length} characters`);
@@ -294,12 +322,14 @@ export class CvService {
       this.logger.log(
         `Stored ${chunks.length} chunks for CV ${cvId} in ChromaDB`,
       );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       return { cvId, fileName };
     } catch (error) {
       this.logger.error('CV upload failed', error.stack, error.message);
       throw error;
     }
+    
   }
 
   private async extractTextFromPdf(filePath: string): Promise<string> {
@@ -431,16 +461,6 @@ export class CvService {
       } else {
         this.logger.debug(`No chat history found for CV ${cvId}`);
       }
-
-      const quizResult = await this.quizCollection.get({ where: { cvId } });
-      if (quizResult.ids.length > 0) {
-        await this.quizCollection.delete({ ids: quizResult.ids });
-        this.logger.log(
-          `Deleted ${quizResult.ids.length} quiz entries for CV ${cvId}`,
-        );
-      } else {
-        this.logger.debug(`No quizzes found for CV ${cvId}`);
-      }
     } catch (error) {
       this.logger.error(
         `CV deletion failed for ${cvId}`,
@@ -453,81 +473,81 @@ export class CvService {
 
   async listCvs(requesterRole: string, requesterEmail: string): Promise<any[]> {
     try {
-      const result = await this.cvCollection.get();
-      this.logger.log(`Retrieved ${result.ids.length} CVs`);
+      this.logger.log(
+        `Listing CVs for ${requesterEmail} with role ${requesterRole}`,
+      );
 
-      if (result.ids.length === 0) {
+      // Retry up to 3 times to handle indexing delays
+      let result;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        result = await this.cvCollection.get({
+          include: ['documents', 'metadatas'] as any,
+        });
+        this.logger.log(
+          `Attempt ${attempt}: Retrieved ${
+            result.ids.length
+          } CVs: ${JSON.stringify(result.ids)}`,
+        );
+        if (result.ids.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!result || result.ids.length === 0) {
         this.logger.warn(`No CVs found in cvCollection for ${requesterEmail}`);
         return [];
       }
+
       let mainCvCounter = 0;
       const mainCvs = result.documents
         .map((doc, index) => {
-          if (result.ids[index].includes('_chunk_')) return null;
-          const parsedDoc = JSON.parse(doc!);
-          const fileName = parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
-          const filePath = path.join(this.uploadFolder, fileName);
-          return {
-            realId: result.ids[index],
-            indexId: ++mainCvCounter,
-            name: parsedDoc.name || 'CV',
-            email: result.metadatas[index]!.uploadedBy,
-            uploadDate: parsedDoc.uploadDate,
-            uploadedBy: result.metadatas[index]!.uploadedBy,
-            filePath: fs.existsSync(filePath) ? filePath : null,
-            fileName,
-            downloadUrl: `/cv/${fileName}`,
-          };
+          if (!doc || result.ids[index].includes('_chunk_')) return null;
+
+          try {
+            const parsedDoc = JSON.parse(doc);
+            const fileName =
+              parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
+            const filePath = path.join(this.uploadFolder, fileName);
+
+            this.logger.debug(
+              `Processing CV: ${JSON.stringify({
+                id: result.ids[index],
+                fileName,
+                exists: fs.existsSync(filePath),
+              })}`,
+            );
+
+            return {
+              realId: result.ids[index],
+              indexId: ++mainCvCounter,
+              name: parsedDoc.name || 'CV',
+              email: result.metadatas[index]?.uploadedBy || 'unknown',
+              uploadDate: parsedDoc.uploadDate || new Date().toISOString(),
+              uploadedBy: result.metadatas[index]?.uploadedBy || 'unknown',
+              filePath: fs.existsSync(filePath) ? filePath : null,
+              fileName,
+              downloadUrl: `/cv/${fileName}`,
+            };
+          } catch (error) {
+            this.logger.error(
+              `Failed to parse document for ID ${result.ids[index]}: ${doc}`,
+              error.stack,
+            );
+            return null;
+          }
         })
         .filter((cv) => cv !== null);
 
       this.logger.log(`Filtered ${mainCvs.length} main CVs`);
 
-      if (requesterRole === 'admin') {
-        const quizzes = await this.quizCollection.get();
+      const filteredCvs =
+        requesterRole === 'admin'
+          ? mainCvs
+          : mainCvs.filter((cv) => cv.uploadedBy === requesterEmail);
 
-        const enrichedCvs = mainCvs.map((cv) => {
-          const quiz = quizzes.documents
-
-            .map((doc) => JSON.parse(doc!))
-
-            .find((q) => q.cvId === cv.realId);
-
-          return {
-            ...cv,
-
-            quizStatus: quiz
-              ? quiz.completedAt
-                ? 'completed'
-                : 'generated'
-              : 'not_generated',
-          };
-        });
-        return enrichedCvs;
-      } else {
-        const userCvs = mainCvs.filter((cv) => {
-          this.logger.debug(
-            `Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`,
-          );
-          return cv.uploadedBy === requesterEmail;
-        });
-        this.logger.debug(`Filtered User CVs: ${JSON.stringify(userCvs)}`);
-        const quizzes = await this.quizCollection.get();
-        const enrichedCvs = userCvs.map((cv) => {
-          const quiz = quizzes.documents
-            .map((doc) => JSON.parse(doc!))
-            .find((q) => q.cvId === cv.realId);
-          return {
-            ...cv,
-            quizStatus: quiz
-              ? quiz.completedAt
-                ? 'completed'
-                : 'generated'
-              : 'not_generated',
-          };
-        });
-        return enrichedCvs;
-      }
+      this.logger.log(
+        `Returning ${filteredCvs.length} CVs for ${requesterEmail}`,
+      );
+      return filteredCvs;
     } catch (error) {
       this.logger.error('List CVs failed', error.stack, error.message);
       throw error;
@@ -742,539 +762,7 @@ export class CvService {
       this.logger.error(
         `Chat history retrieval failed for fileName ${fileName}`,
         error.stack,
-        error.message,
       );
-      throw error;
-    }
-  }
-
-  // quize functions
-  async getCvSkills(
-    fileName: string,
-  ): Promise<{ skills: string[]; level: string }> {
-    try {
-      this.logger.log(`Extracting skills for fileName: ${fileName}`);
-
-      const cvId = await this.resolveFileNameToCvId(fileName);
-
-      const result = await this.cvCollection.get({ where: { cvId } });
-
-      if (result.ids.length === 0 || !result.documents[0]) {
-        this.logger.warn(`CV ${cvId} not found`);
-        throw new NotFoundException('CV not found');
-      }
-
-      const chunks = result.documents
-        .map((doc) => JSON.parse(doc!))
-        .filter((doc) => doc.text)
-        .map((doc) => doc.text)
-        .join('\n');
-
-      if (!chunks) {
-        this.logger.warn(`No text chunks found for CV ${cvId}`);
-        throw new NotFoundException('No text found in CV');
-      }
-
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-        modelName: 'gpt-4o-mini',
-        temperature: 0.5,
-      });
-
-      const promptTemplate = PromptTemplate.fromTemplate(`
-        You are an AI assistant tasked with extracting technical skills and estimating the candidate's proficiency level from a CV. The CV text is provided below. Identify all technical skills (e.g., programming languages, frameworks, tools) mentioned explicitly or implied through experience. Estimate the overall proficiency level as "beginner", "intermediate", or "advanced" based on years of experience, project complexity, or certifications mentioned. If no clear level is indicated, default to "intermediate".
-
-        CV Text:
-        {cvText}
-
-        Output in JSON format:
-        {
-          "skills": ["skill1", "skill2", ...],
-          "level": "beginner|intermediate|advanced"
-        }
-      `);
-
-      const chain = RunnableSequence.from([
-        { cvText: new RunnablePassthrough() },
-        promptTemplate,
-        llm,
-        new StringOutputParser(),
-      ]);
-
-      const response = await chain.invoke(chunks);
-
-      let parsedResponse: { skills: string[]; level: string };
-      try {
-        parsedResponse = JSON.parse(response);
-      } catch (e) {
-        this.logger.error(`Failed to parse skills response: ${response}`, e);
-        throw new Error('Failed to parse skills response');
-      }
-
-      this.logger.log(`Extracted skills: ${JSON.stringify(parsedResponse)}`);
-      return parsedResponse;
-    } catch (error) {
-      this.logger.error('Skill extraction failed', error.stack, error.message);
-      throw error;
-    }
-  }
-
-  async generateQuiz(
-    fileName: string,
-
-    requesterEmail: string,
-
-    requesterRole: string,
-  ): Promise<{
-    quizId: string;
-
-    link: string;
-
-    questions: {
-      id: string;
-      text: string;
-      options: string[];
-      correct: number;
-    }[];
-  }> {
-    try {
-      this.logger.log(`Generating quiz for fileName: ${fileName}`);
-
-      const cvId = await this.resolveFileNameToCvId(fileName);
-
-      const cvResult = await this.cvCollection.get({ ids: [cvId] });
-
-      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
-        this.logger.warn(`CV ${cvId} not found`);
-
-        throw new NotFoundException('CV not found');
-      }
-
-      if (
-        requesterRole !== 'admin' &&
-        cvResult.metadatas[0]?.uploadedBy !== requesterEmail
-      ) {
-        this.logger.warn(
-          `Unauthorized quiz generation attempt by ${requesterEmail} for CV ${cvId}`,
-        );
-
-        throw new ForbiddenException(
-          'You are not authorized to generate a quiz for this CV',
-        );
-      }
-
-      const skillsResult = await this.getCvSkills(fileName);
-
-      const { skills, level } = skillsResult;
-
-      if (!skills || skills.length === 0) {
-        this.logger.warn(`No skills found for CV ${cvId}`);
-
-        throw new BadRequestException('No skills found to generate a quiz');
-      }
-
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-
-        modelName: 'gpt-4o-mini',
-
-        temperature: 0.7,
-      });
-
-      const promptTemplate = PromptTemplate.fromTemplate(`
-
-        You are an AI assistant tasked with generating a technical quiz based on a candidate's skills and proficiency level. The skills are: {skills}. The proficiency level is: {level}. Generate a quiz with 5 multiple-choice questions, each with 4 options and one correct answer. The questions should be appropriate for the given proficiency level (beginner, intermediate, or advanced).
-
-
-
-        Output in JSON format:
-
-        {
-
-          "questions": [
-
-            {
-
-              "id": "q1",
-
-              "text": "Question text",
-
-              "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-
-              "correct": 0
-
-            },
-
-            ...
-
-          ]
-
-        }
-
-      `);
-
-      const chain = RunnableSequence.from([
-        {
-          skills: () => skills.join(', '),
-
-          level: () => level,
-        },
-
-        promptTemplate,
-
-        llm,
-
-        new StringOutputParser(),
-      ]);
-
-      const response = await chain.invoke({});
-
-      let parsedResponse: {
-        questions: {
-          id: string;
-          text: string;
-          options: string[];
-          correct: number;
-        }[];
-      };
-
-      try {
-        parsedResponse = JSON.parse(response);
-      } catch (e) {
-        this.logger.error(`Failed to parse quiz response: ${response}`, e);
-
-        throw new Error('Failed to parse quiz response');
-      }
-
-      const quizId = uuidv4();
-
-      const appUrl =
-        this.configService.get<string>('NEXT_PUBLIC_APP_URL') ||
-        'http://localhost:3000';
-
-      const quizLink = `${appUrl}/quiz/${quizId}`;
-
-      const quizDocument = JSON.stringify({
-        quizId,
-
-        cvId,
-
-        fileName,
-
-        questions: parsedResponse.questions,
-
-        createdAt: new Date().toISOString(),
-
-        createdBy: requesterEmail,
-      });
-
-      await this.quizCollection.add({
-        ids: [quizId],
-
-        documents: [quizDocument],
-
-        metadatas: [{ cvId, fileName, createdBy: requesterEmail }],
-      });
-
-      this.logger.log(`Stored quiz ${quizId} for CV ${cvId}`);
-
-      return {
-        quizId,
-
-        link: quizLink,
-
-        questions: parsedResponse.questions,
-      };
-    } catch (error) {
-      this.logger.error('Quiz generation failed', error.stack, error.message);
-
-      throw error;
-    }
-  }
-
-  async getQuiz(quizId: string): Promise<{
-    quizId: string;
-    cvId: string;
-    fileName: string;
-    questions: {
-      id: string;
-      text: string;
-      options: string[];
-      correct: number;
-    }[];
-    completedAt?: string;
-  }> {
-    try {
-      this.logger.log(`Retrieving quiz for quizId: ${quizId}`);
-      const result = await this.quizCollection.get({ ids: [quizId] });
-      if (result.ids.length === 0 || !result.documents[0]) {
-        this.logger.warn(`Quiz ${quizId} not found`);
-        throw new NotFoundException('Quiz not found');
-      }
-      const quizDoc = JSON.parse(result.documents[0]);
-      return {
-        quizId: quizDoc.quizId,
-        cvId: quizDoc.cvId,
-        fileName: quizDoc.fileName,
-        questions: quizDoc.questions,
-        completedAt: quizDoc.completedAt,
-      };
-    } catch (error) {
-      this.logger.error(
-        'Quiz retrieval failed',
-        error.stack,
-        error.message,
-      );
-      throw error;
-    }
-  }
-
-  async getQuizResults(
-    quizId: string,
-
-    requesterEmail: string,
-
-    requesterRole: string,
-  ): Promise<{
-    fileName: string;
-
-    score: number;
-
-    timeTaken: number;
-
-    completedAt: string;
-  }> {
-    try {
-      this.logger.log(`Retrieving quiz results for quizId: ${quizId}`);
-
-      const result = await this.quizCollection.get({ ids: [quizId] });
-
-      if (result.ids.length === 0 || !result.documents[0]) {
-        this.logger.warn(`Quiz ${quizId} not found`);
-
-        throw new NotFoundException('Quiz not found');
-      }
-
-      const quizDoc = JSON.parse(result.documents[0]);
-
-      const cvId = quizDoc.cvId;
-
-      const cvResult = await this.cvCollection.get({ ids: [cvId] });
-
-      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
-        this.logger.warn(`CV ${cvId} not found`);
-
-        throw new NotFoundException('CV not found');
-      }
-
-      if (
-        requesterRole !== 'admin' &&
-        cvResult.metadatas[0]?.uploadedBy !== requesterEmail
-      ) {
-        this.logger.warn(
-          `Unauthorized quiz results access by ${requesterEmail} for quiz ${quizId}`,
-        );
-
-        throw new ForbiddenException(
-          'You are not authorized to view this quiz result',
-        );
-      }
-
-      if (!quizDoc.completedAt) {
-        this.logger.warn(`Quiz ${quizId} has not been completed`);
-
-        throw new BadRequestException('Quiz has not been completed');
-      }
-
-      return {
-        fileName: quizDoc.fileName,
-
-        score: quizDoc.score || 0,
-
-        timeTaken: quizDoc.timeTaken || 0,
-
-        completedAt: quizDoc.completedAt,
-      };
-    } catch (error) {
-      this.logger.error(
-        'Quiz results retrieval failed',
-        error.stack,
-        error.message,
-      );
-
-      throw error;
-    }
-  }
-
-  async submitQuizAnswers(
-    quizId: string,
-
-    answers: { [questionId: string]: number },
-
-    timeTaken: number,
-  ): Promise<void> {
-    try {
-      this.logger.log(`Submitting answers for quizId: ${quizId}`);
-
-      const result = await this.quizCollection.get({ ids: [quizId] });
-
-      if (result.ids.length === 0 || !result.documents[0]) {
-        this.logger.warn(`Quiz ${quizId} not found`);
-
-        throw new NotFoundException('Quiz not found');
-      }
-
-      const quizDoc = JSON.parse(result.documents[0]);
-
-      if (quizDoc.completedAt) {
-        this.logger.warn(`Quiz ${quizId} already completed`);
-
-        throw new BadRequestException('Quiz already completed');
-      }
-
-      const questions = quizDoc.questions;
-
-      let correctAnswers = 0;
-
-      for (const question of questions) {
-        const userAnswer = answers[question.id];
-
-        if (userAnswer === question.correct) {
-          correctAnswers++;
-        }
-      }
-
-      const score = (correctAnswers / questions.length) * 100;
-
-      quizDoc.score = score;
-
-      quizDoc.timeTaken = timeTaken;
-
-      quizDoc.completedAt = new Date().toISOString();
-
-      await this.quizCollection.upsert({
-        ids: [quizId],
-
-        documents: [JSON.stringify(quizDoc)],
-
-        metadatas: [result.metadatas[0]!],
-      });
-
-      this.logger.log(`Quiz ${quizId} answers submitted: score=${score}%`);
-    } catch (error) {
-      this.logger.error(
-        'Quiz answer submission failed',
-        error.stack,
-        error.message,
-      );
-
-      throw error;
-    }
-  }
-
-  async sendQuizEmail(
-    email: string,
-
-    quizLink: string,
-
-    requesterEmail: string,
-
-    requesterRole: string,
-  ): Promise<void> {
-    try {
-      this.logger.log(`Sending quiz email to ${email} from ${requesterEmail}`);
-
-      const quizId = quizLink.split('/').pop();
-
-      if (!quizId) {
-        this.logger.warn('Invalid quiz link');
-
-        throw new BadRequestException('Invalid quiz link');
-      }
-
-      const result = await this.quizCollection.get({ ids: [quizId] });
-
-      if (result.ids.length === 0 || !result.documents[0]) {
-        this.logger.warn(`Quiz ${quizId} not found`);
-
-        throw new NotFoundException('Quiz not found');
-      }
-
-      const quizDoc = JSON.parse(result.documents[0]);
-
-      const cvId = quizDoc.cvId;
-
-      const cvResult = await this.cvCollection.get({ ids: [cvId] });
-
-      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
-        this.logger.warn(`CV ${cvId} not found`);
-
-        throw new NotFoundException('CV not found');
-      }
-
-      if (
-        requesterRole !== 'admin' &&
-        cvResult.metadatas[0]?.uploadedBy !== requesterEmail
-      ) {
-        this.logger.warn(
-          `Unauthorized email send attempt by ${requesterEmail} for quiz ${quizId}`,
-        );
-
-        throw new ForbiddenException(
-          'You are not authorized to send this quiz',
-        );
-      }
-
-      const msg = {
-        to: email,
-
-        from:
-          this.configService.get<string>('SENDGRID_FROM_EMAIL') ||
-          'no-reply@yourapp.com',
-
-        subject: 'Your Technical Quiz',
-
-        text: `Please take your technical quiz here: ${quizLink}`,
-
-        html: `
-
-          <h2>Technical Quiz</h2>
-
-          <p>Please click the link below to start your quiz:</p>
-
-          <a href="${quizLink}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
-
-            Start Quiz
-
-          </a>
-
-        `,
-      };
-
-      await sgMail.send(msg);
-
-      this.logger.log(`Quiz email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(
-        'Quiz email sending failed',
-        error.stack,
-        error.message,
-      );
-
       throw error;
     }
   }

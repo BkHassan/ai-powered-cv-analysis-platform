@@ -3,14 +3,17 @@ import { CvService } from './cv.service';
 import { CvController } from './cv.controller';
 import { ChromaClient } from 'chromadb';
 import { ConfigService } from '@nestjs/config';
+// import { QuizService } from './quiz.service';
+// import { QuizController } from './quiz.controller';
 
 @Module({
   controllers: [CvController],
   providers: [
     CvService,
+    // QuizService,
     {
       provide: ChromaClient,
-      useFactory: (configService: ConfigService) => 
+      useFactory: (configService: ConfigService) =>
         new ChromaClient({ path: configService.get<string>('CHROMADB_URL') }),
       inject: [ConfigService],
     },

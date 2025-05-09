@@ -15,7 +15,6 @@ import {
   User,
   Mail,
   Calendar,
-  FileText,
 } from "lucide-react";
 import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,8 +26,6 @@ interface CV {
   email: string;
   uploadDate: string;
   fileName: string;
-  quizStatus?: "not_generated" | "generated" | "completed";
-  quizScore?: number;
 }
 
 interface CVCardProps {
@@ -58,18 +55,6 @@ function CVCard({ cv, onDelete }: CVCardProps) {
               month: "short",
               day: "numeric",
             }).format(new Date(cv.uploadDate))}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-gray-700">
-          <FileText size={16} />
-
-          <span className="text-sm">
-            Quiz:{" "}
-            {cv.quizStatus === "completed"
-              ? `Completed (${cv.quizScore !== undefined ? `${cv.quizScore}%` : "Score unavailable"})`
-              : cv.quizStatus === "generated"
-              ? "Generated"
-              : "Not Generated"}
           </span>
         </div>
         <div className="flex gap-2 mt-4">

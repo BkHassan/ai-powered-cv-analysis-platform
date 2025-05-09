@@ -53,6 +53,7 @@ export function ChatWithCV({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [retryCount, setRetryCount] = useState(0); // Track retry attempts
 
   useEffect(() => {
     if (showInstructions) return;
@@ -74,9 +75,8 @@ export function ChatWithCV({
           console.error(`Fetch CVs failed: ${response.status} - ${errorText}`);
           throw new Error(`Failed to fetch CVs: ${errorText}`);
         }
-       const data = await response.json();
+        const data = await response.json();
         console.log("Fetched CVs:", data); // Debug CV list
-        setCvs(data);
         if (!Array.isArray(data) || data.length === 0) {
           console.warn("No CVs returned from /cv");
           setCvs([]);
@@ -90,19 +90,18 @@ export function ChatWithCV({
           console.log(`URL fileName ${urlFileName} found in CV list`);
           setSelectedCV(urlFileName);
           localStorage.setItem("lastSelectedFileName", urlFileName);
-        } else if (urlFileName) {
-          console.warn(`URL fileName ${urlFileName} not found in CV list`);
-          toast.error("Selected CV not found");
-          setSelectedCV(data[0]?.fileName || "");
-          if (data[0]?.fileName) {
-            localStorage.setItem("lastSelectedFileName", data[0].fileName);
-            router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
+        } else if (urlFileName && retryCount < 3) {
+          console.warn(`URL fileName ${urlFileName} not found in CV list, retrying (${retryCount + 1}/3)`);
+          // Retry fetching CVs after a delay
+          setTimeout(() => setRetryCount((prev) => prev + 1), 1000);
+        } else {
+          console.log(`Setting default CV to ${data[0]?.fileName || ""}`);
+          const defaultFileName = data[0]?.fileName || "";
+          setSelectedCV(defaultFileName);
+          if (defaultFileName) {
+            localStorage.setItem("lastSelectedFileName", defaultFileName);
+            router.push(`/admin/chat?fileName=${encodeURIComponent(defaultFileName)}`, { scroll: false });
           }
-        } else if (data[0]?.fileName) {
-          console.log(`Setting default CV to ${data[0].fileName}`);
-          setSelectedCV(data[0].fileName);
-          localStorage.setItem("lastSelectedFileName", data[0].fileName);
-          router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
@@ -112,7 +111,7 @@ export function ChatWithCV({
       }
     };
     fetchCvs();
-  }, [initialFileName, showInstructions, searchParams, router]);
+  }, [initialFileName, showInstructions, searchParams, router, retryCount]);
 
   useEffect(() => {
     if (!selectedCV || showInstructions) return;
