@@ -1,3 +1,4 @@
+// components/CVList.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -15,9 +16,12 @@ import {
   User,
   Mail,
   Calendar,
+  FileQuestion,
 } from "lucide-react";
 import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QuizResults } from "@/components/QuizResults";
+import { toast } from "react-toastify";
 
 interface CV {
   realId: string;
@@ -34,13 +38,51 @@ interface CVCardProps {
 }
 
 function CVCard({ cv, onDelete }: CVCardProps) {
+  const [quizIds, setQuizIds] = useState<string[]>([]);
+  const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
+
+  useEffect(() => {
+    const fetchQuizzes = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(cv.fileName)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Failed to fetch quizzes");
+        }
+        const data = await response.json();
+        setQuizIds(data.quizIds);
+      } catch (err: any) {
+        console.error("Error fetching quizzes:", err);
+        // Silently fail to avoid disrupting CV card
+      } finally {
+        setIsLoadingQuizzes(false);
+      }
+    };
+    fetchQuizzes();
+  }, [cv.fileName]);
+
   return (
     <Card className="overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-105 bg-white/90 backdrop-blur-sm border border-purple-100">
-      <CardHeader className="text-white p-4">
+      <CardHeader className="text-white p-4 flex flex-row items-center justify-between">
         <CardTitle className="text-gray-700 text-lg flex items-center gap-2">
           <User size={20} />
           {cv.name} <span className="text-sm opacity-75">(#{cv.indexId})</span>
         </CardTitle>
+        <div className="flex gap-1">
+          {!isLoadingQuizzes &&
+            quizIds.map((quizId) => (
+              <QuizResults key={quizId} quizId={quizId} simple />
+            ))}
+        </div>
       </CardHeader>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2 text-gray-700">
@@ -75,11 +117,20 @@ function CVCard({ cv, onDelete }: CVCardProps) {
             className="flex-1 hover:bg-green-500 hover:text-white transition-colors"
             asChild
           >
-            <Link
-              href={`/admin/chat?fileName=${(cv.fileName)}`}
-            >
+            <Link href={`/admin/chat?fileName=${cv.fileName}`}>
               <MessageSquare className="h-4 w-4 mr-1" />
               Chat
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 hover:bg-blue-500 hover:text-white transition-colors"
+            asChild
+          >
+            <Link href={`/admin/quiz/${cv.fileName}`}>
+              <FileQuestion className="h-4 w-4 mr-1" />
+              Quiz
             </Link>
           </Button>
           <Button
@@ -100,11 +151,12 @@ function CVCard({ cv, onDelete }: CVCardProps) {
 function CVCardSkeleton() {
   return (
     <Card className="overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-105 bg-white/90 backdrop-blur-sm border border-purple-100">
-      <CardHeader className="text-white p-4">
+      <CardHeader className="text-white p-4 flex flex-row items-center justify-between">
         <CardTitle className="text-gray-700 text-lg flex items-center gap-2">
           <Skeleton className="h-5 w-5 rounded-full" />
           <Skeleton className="h-6 w-32" />
         </CardTitle>
+        <Skeleton className="h-4 w-16" />
       </CardHeader>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center gap-2">
@@ -115,11 +167,15 @@ function CVCardSkeleton() {
           <Skeleton className="h-4 w-4 rounded-full" />
           <Skeleton className="h-4 w-24" />
         </div>
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-4 w-4 rounded-full" />
-          <Skeleton className="h-4 w-24" />
-        </div>
         <div className="flex gap-2 mt-4">
+          <div className="flex-1">
+            <Skeleton className="h-9 w-full flex items-center justify-center gap-1">
+              <div className="flex items-center gap-1">
+                <Skeleton className="h-4 w-4 rounded-full" />
+                <Skeleton className="h-4 w-12" />
+              </div>
+            </Skeleton>
+          </div>
           <div className="flex-1">
             <Skeleton className="h-9 w-full flex items-center justify-center gap-1">
               <div className="flex items-center gap-1">
@@ -159,7 +215,6 @@ export function CVList({ refreshKey = 0 }: CVListProps) {
   const { cvs, status, handleDelete } = useCVs(refreshKey);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Simulate loading state for demonstration
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);

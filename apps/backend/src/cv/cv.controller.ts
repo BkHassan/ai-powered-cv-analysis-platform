@@ -28,6 +28,7 @@ export class CvController {
   constructor(private readonly cvService: CvService) {}
 
   @Post('upload')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
   async uploadCV(
     @UploadedFile() file: Express.Multer.File,
@@ -81,6 +82,7 @@ export class CvController {
   }
 
   @Delete(':cvId')
+  @UseGuards(JwtAuthGuard)
   async deleteCV(@Param('cvId') cvId: string, @Req() req: any) {
     this.logger.log(
       `Received delete request for CV ${cvId} from ${req.user.email}`,
@@ -90,6 +92,7 @@ export class CvController {
   }
 
   @Post(':fileName/chat')
+  @UseGuards(JwtAuthGuard)
   async chatCv(
     @Param('fileName') fileName: string,
     @Body() chatCvDto: ChatCvDto,
@@ -109,6 +112,7 @@ export class CvController {
   }
 
   @Get(':fileName/chat-history')
+  @UseGuards(JwtAuthGuard)
   async getChatHistory(@Param('fileName') fileName: string, @Req() req: any) {
     const user = req.user as { email: string; role: string };
     return this.cvService.getChatHistory(fileName, user.email, user.role);
