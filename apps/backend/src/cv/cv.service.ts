@@ -21,6 +21,7 @@ import {
 } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import * as crypto from 'crypto';
+import { RunnableLike } from '@langchain/core/runnables';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -548,16 +549,15 @@ export class CvService {
       `);
 
       const chain = RunnableSequence.from([
-        {
-          context: () => context,
-          question: new RunnablePassthrough(),
-        },
         promptTemplate,
-        llm,
+        llm as unknown as RunnableLike<any, any>,
         new StringOutputParser(),
       ]);
 
-      const response = await chain.invoke(message);
+      const response = await chain.invoke({
+        context,
+        question: message,
+      });
       this.logger.log(`Chat response: ${response}`);
 
       const chatId = `chat_${cvId}_${Date.now()}`;
@@ -617,10 +617,7 @@ export class CvService {
       }
 
       const whereClause: Where = {
-        $and: [
-          { cvId: cvId } as Where,
-          { userEmail: requesterEmail } as Where,
-        ],
+        $and: [{ cvId: cvId } as Where, { userEmail: requesterEmail } as Where],
       };
       this.logger.debug(
         `Querying chat_history with where: ${JSON.stringify(whereClause)}`,
