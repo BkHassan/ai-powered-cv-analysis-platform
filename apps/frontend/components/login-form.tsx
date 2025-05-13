@@ -1,28 +1,30 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react"
-import { ToastContainer, toast } from "react-toastify"
-import 'react-toastify/dist/ReactToastify.css'
+import type React from "react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [errorMessage, setErrorMessage] = useState("")
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [email, setEmail] = useState("");
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setErrorMessage("")
+    e.preventDefault();
+    setIsLoading(true);
+    setErrorMessage("");
 
     const formData = {
       email: (e.currentTarget.elements.namedItem("email") as HTMLInputElement).value,
       password: (e.currentTarget.elements.namedItem("password") as HTMLInputElement).value,
-    }
+    };
+    setEmail(formData.email);
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
@@ -31,44 +33,72 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(formData),
-      })
+      });
 
-      const errorData = await response.json()
+      const errorData = await response.json();
 
       if (!response.ok) {
         if (response.status === 404 || errorData.message === "User not found") {
-          const msg = "No account found with this email. Would you like to sign up?"
-          setErrorMessage(msg)
-          toast.error(msg)
-          return
+          const msg = "No account found with this email. Would you like to sign up?";
+          setErrorMessage(msg);
+          toast.error(msg);
+          return;
         }
 
-        if (response.status === 401 || errorData.message === "Invalid password") {
-          const msg = "Incorrect password. Please try again."
-          setErrorMessage(msg)
-          toast.error(msg)
-          return
+        if (response.status === 401 && errorData.message.includes("Email not verified")) {
+          const msg = "Please verify your email with the OTP sent to your inbox.";
+          setErrorMessage(msg);
+          toast.error(msg);
+          return;
         }
 
-        const msg = errorData.message || "Login failed. Please check your credentials."
-        setErrorMessage(msg)
-        toast.error(msg)
-        return
+        if (response.status === 401 || errorData.message === "Incorrect password") {
+          const msg = "Incorrect password. Please try again.";
+          setErrorMessage(msg);
+          toast.error(msg);
+          return;
+        }
+
+        const msg = errorData.message || "Login failed. Please check your credentials.";
+        setErrorMessage(msg);
+        toast.error(msg);
+        return;
       }
 
-      // success
-      const data = errorData
-      toast.success("Login successful!")
-      localStorage.setItem("token", data.accessToken)
-      window.location.href = "/admin"
-
+      // Success
+      const data = errorData;
+      toast.success("Login successful!");
+      localStorage.setItem("token", data.accessToken);
+      window.location.href = "/admin";
     } catch (error) {
-      console.error("Error:", error)
-      toast.error("An unexpected error occurred. Please try again.")
+      console.error("Error:", error);
+      toast.error("An unexpected error occurred. Please try again.");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
+
+  // Optional: Resend OTP (requires backend endpoint)
+  const handleResendOtp = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to resend OTP");
+      }
+
+      toast.success("OTP resent! Check your email.");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to resend OTP.");
+    }
+  };
 
   return (
     <>
@@ -76,7 +106,13 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" placeholder="name@example.com" required autoComplete="email" />
+          <Input
+            id="email"
+            type="email"
+            placeholder="name@example.com"
+            required
+            autoComplete="email"
+          />
         </div>
 
         <div className="space-y-2">
@@ -118,6 +154,15 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
                 Sign up
               </button>
             )}
+            {errorMessage.includes("verify your email") && (
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                className="ml-2 underline text-blue-600 hover:text-blue-800"
+              >
+                Resend OTP
+              </button>
+            )}
           </div>
         )}
 
@@ -139,5 +184,5 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
         </Button>
       </form>
     </>
-  )
+  );
 }

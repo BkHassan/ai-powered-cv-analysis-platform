@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { CvModule } from './cv/cv.module';
 import { ConfigModule } from '@nestjs/config';
+import { QuizModule } from './quiz/quiz.module';
 
 @Module({
   imports: [
@@ -9,6 +10,6 @@ import { ConfigModule } from '@nestjs/config';
       envFilePath: '.env',
       isGlobal: true,      
     }),
-    AuthModule, CvModule],
+    AuthModule, CvModule, QuizModule],
 })
 export class AppModule {}

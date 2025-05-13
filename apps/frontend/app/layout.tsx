@@ -5,9 +5,9 @@ import { ToastContainer } from 'react-toastify';
 
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.dev",
+  title: "my App",
+  description: "Created by me",
+  generator: "me",
 };
 
 export default function RootLayout({

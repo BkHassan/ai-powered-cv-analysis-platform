@@ -7,10 +7,13 @@ import { CVList } from "@/components/cv-list";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  
 
   const handleUploadSuccess = () => {
     setRefreshKey((prev) => prev + 1);
@@ -54,10 +57,6 @@ export default function AdminDashboard() {
             <div className="p-6">
               <ChatWithCV showInstructions={true} />
             </div>
-          </section>
-
-          <section className="p-6">
-            <CVList refreshKey={refreshKey} />
           </section>
         </div>
       </main>

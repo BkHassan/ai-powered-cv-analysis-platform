@@ -17,6 +17,7 @@ import { ResetPasswordDto } from './dto/reset-password';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v4 as uuidv4 } from 'uuid';
 import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../email/email.services';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -60,6 +61,7 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
 export class AuthService implements OnModuleInit {
   private userCollection: Collection;
   private resetTokenCollection: Collection;
+  private otpTokenCollection: Collection;
   private readonly logger = new Logger(AuthService.name);
   private readonly embeddingFunction: IEmbeddingFunction;
 
@@ -67,6 +69,7 @@ export class AuthService implements OnModuleInit {
     private readonly jwtService: JwtService,
     private readonly chromaClient: ChromaClient,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {
     this.embeddingFunction = new GeminiEmbeddingFunction(configService);
   }
@@ -83,6 +86,10 @@ export class AuthService implements OnModuleInit {
           embeddingFunction: this.embeddingFunction,
         },
       );
+      this.otpTokenCollection = await this.chromaClient.getOrCreateCollection({
+        name: 'otp_tokens',
+        embeddingFunction: this.embeddingFunction,
+      });
       this.logger.log('ChromaDB collections initialized successfully');
     } catch (error) {
       this.logger.error(
@@ -98,14 +105,19 @@ export class AuthService implements OnModuleInit {
     try {
       await this.initializeCollections();
       await this.ensureAdminUser();
+      // await this.debugUsers();
     } catch (error) {
       this.logger.error(
         `Failed to ensure admin user on startup',
         ${error.message}`,
         error.message,
       );
-      throw error; // Let NestJS handle startup failure
+      throw error;
     }
+  }
+
+  private generateOTP(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
   }
 
   private async ensureAdminUser() {
@@ -172,6 +184,7 @@ export class AuthService implements OnModuleInit {
         password: hashedPassword,
         cv_id: [],
         role: 'admin',
+        isEmailVerified: true,
       });
 
       this.logger.log('Storing admin user in ChromaDB');
@@ -228,6 +241,27 @@ export class AuthService implements OnModuleInit {
       this.logger.log('Hashing password');
       const hashedPassword = await bcrypt.hash(password, 10);
 
+      this.logger.log('Generating OTP');
+      const otp = this.generateOTP();
+      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+      const otpDocument = JSON.stringify({
+        email,
+        otp,
+        expiresAt,
+        verified: false,
+      });
+
+      this.logger.log('Storing OTP in ChromaDB');
+      const otpId = `otp_${uuidv4()}`;
+      await this.otpTokenCollection.add({
+        ids: [otpId],
+        documents: [otpDocument],
+        metadatas: [{ email }],
+      });
+
+      this.logger.log('Sending OTP email');
+      await this.emailService.sendOtpEmail(email, otp);
+
       this.logger.log('Storing user in ChromaDB');
       const userId = `user_${uuidv4()}`;
       const userDocument = JSON.stringify({
@@ -236,6 +270,7 @@ export class AuthService implements OnModuleInit {
         password: hashedPassword,
         cv_id: [],
         role: 'user',
+        isEmailVerified: false,
       });
 
       //save the user data
@@ -271,6 +306,11 @@ export class AuthService implements OnModuleInit {
       }
 
       const userDoc = JSON.parse(result.documents[0]);
+      if (!userDoc.isEmailVerified) {
+        throw new UnauthorizedException(
+          'Email not verified. Please verify your email with the OTP sent.',
+        );
+      }
       this.logger.log('Verifying password');
       const isPasswordValid = await bcrypt.compare(password, userDoc.password);
 
@@ -289,9 +329,58 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async forgotPassword(
-    forgotPasswordDto: ForgotPasswordDto,
-  ): Promise<{ resetToken: string }> {
+  async verifyOtp(dto: { email: string; otp: string }): Promise<void> {
+    try {
+      this.logger.log(`Verifying OTP for email: ${dto.email}`);
+      const result = await this.otpTokenCollection.get({
+        where: { email: dto.email },
+      });
+
+      if (result.ids.length === 0 || !result.documents[0]) {
+        throw new UnauthorizedException('Invalid or expired OTP');
+      }
+
+      const otpDoc = JSON.parse(result.documents[0]);
+      if (otpDoc.otp !== dto.otp) {
+        throw new UnauthorizedException('Invalid OTP');
+      }
+      if (otpDoc.expiresAt < Date.now()) {
+        await this.otpTokenCollection.delete({ ids: [result.ids[0]] });
+        throw new UnauthorizedException('OTP expired');
+      }
+
+      this.logger.log(`Marking email ${dto.email} as verified`);
+      const userResult = await this.userCollection.get({
+        where: { email: dto.email },
+      });
+
+      if (userResult.ids.length === 0 || !userResult.documents[0]) {
+        throw new NotFoundException('User not found');
+      }
+
+      const userDoc = JSON.parse(userResult.documents[0]);
+      const updatedUserDoc = JSON.stringify({
+        ...userDoc,
+        isEmailVerified: true,
+      });
+
+      await this.userCollection.update({
+        ids: [userResult.ids[0]],
+        documents: [updatedUserDoc],
+        metadatas: [{ email: dto.email }],
+      });
+
+      this.logger.log('Deleting used OTP');
+      await this.otpTokenCollection.delete({ ids: [result.ids[0]] });
+
+      this.logger.log(`Email ${dto.email} verified successfully`);
+    } catch (error) {
+      this.logger.error(`OTP verification failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<void> {
     const { email } = forgotPasswordDto;
 
     try {
@@ -316,10 +405,14 @@ export class AuthService implements OnModuleInit {
         metadatas: [{ email }],
       });
 
-      this.logger.log(`Reset token generated: ${resetToken}`);
-      return { resetToken }; // For MVP, return token (no SendGrid)
+      this.logger.log('Sending reset password email');
+
+      await this.emailService.sendOtpEmail(email, resetToken);
     } catch (error) {
-      this.logger.error(`Forgot password failed', ${error.message}`, error.message);
+      this.logger.error(
+        `Forgot password failed', ${error.message}`,
+        error.message,
+      );
       throw error;
     }
   }
@@ -372,8 +465,32 @@ export class AuthService implements OnModuleInit {
 
       this.logger.log('Password reset successfully');
     } catch (error) {
-      this.logger.error(`Reset password failed', ${error.message}`, error.message);
+      this.logger.error(
+        `Reset password failed', ${error.message}`,
+        error.message,
+      );
       throw error;
     }
   }
+
+  async deleteUserByEmail(email: string): Promise<void> {
+    const result = await this.userCollection.get({
+      where: { email },
+    });
+
+    if (!result.ids || result.ids.length === 0) {
+      throw new NotFoundException(`User with email ${email} not found`);
+    }
+
+    await this.userCollection.delete({ ids: result.ids });
+    this.logger.log(`Deleted user with email: ${email}`);
+  }
+
+  // async debugUsers() {
+  //   const result = await this.userCollection.get();
+  //   console.log(
+  //     'Users:',
+  //     result.documents.map((doc) => JSON.parse(doc!)),
+  //   );
+  // }
 }

@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
-import { CvService } from './cv.service';
-import { CvController } from './cv.controller';
 import { ChromaClient } from 'chromadb';
 import { ConfigService } from '@nestjs/config';
-// import { QuizService } from './quiz.service';
-// import { QuizController } from './quiz.controller';
+import { QuizService } from './quiz.service';
+import { QuizController } from './quiz.controller';
+import { CvModule } from '../cv/cv.module';
 
 @Module({
-  controllers: [CvController],
+  imports: [CvModule],
+  controllers: [QuizController],
   providers: [
-    CvService,
+    QuizService,
     {
       provide: ChromaClient,
       useFactory: (configService: ConfigService) =>
@@ -17,6 +17,5 @@ import { ConfigService } from '@nestjs/config';
       inject: [ConfigService],
     },
   ],
-  exports: [CvService],
 })
-export class CvModule {}
+export class QuizModule {}
