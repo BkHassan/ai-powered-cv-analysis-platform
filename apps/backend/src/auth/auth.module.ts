@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt.strategy';
 import { ChromaClient } from 'chromadb';
 import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../email/email.services';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ConfigService } from '@nestjs/config';
          new ChromaClient({ path: configService.get<string>('CHROMADB_URL')}),
       inject: [ConfigService],
     },
+    EmailService,
   ],
   controllers: [AuthController],
 })

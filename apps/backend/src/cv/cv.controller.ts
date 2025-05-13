@@ -8,7 +8,7 @@ import {
   Param,
   BadRequestException,
   UseGuards,
-  Request,
+  Req,
   Logger,
   Res,
   Delete,
@@ -28,10 +28,12 @@ export class CvController {
   constructor(private readonly cvService: CvService) {}
 
   @Post('upload')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
   async uploadCV(
     @UploadedFile() file: Express.Multer.File,
-    @Request() req: any,
+    @Body('name') name: string,
+    @Req() req,
   ) {
     this.logger.log(`Received upload request from ${req.user.email}`);
     if (!file) {
@@ -42,22 +44,28 @@ export class CvController {
       this.logger.error(`Invalid file type: ${file.mimetype}`);
       throw new BadRequestException('Only PDF files are accepted');
     }
-    const uploaderEmail = req.user.email;
-    const name = req.body.name;
-    if (!name || typeof name !== 'string' || name.trim().length === 0){
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
       this.logger.error('No valid name provided in request');
-      throw new BadRequestException('CV name or note is required'); 
+      throw new BadRequestException('CV name or note is required');
     }
     this.logger.log(
-      `Uploading CV for ${uploaderEmail}, file: ${file.originalname}, name: ${name}`,
+      `Uploading CV for ${req.user.email}, file: ${file.originalname}, name: ${name}`,
     );
-    return this.cvService.uploadCv(uploaderEmail, file, name);
+    return this.cvService.uploadCv(req.user.email, file, name);
   }
 
+  @Get()
+  @UseGuards(JwtAuthGuard)
+  async listCvs(@Req() req) {
+    this.logger.log(`List CVs request by ${req.user.email}`);
+    return this.cvService.listCvs(req.user.role, req.user.email);
+  }
+  
   @Get(':fileName')
+  @UseGuards(JwtAuthGuard)
   async getCv(
     @Param('fileName') fileName: string,
-    @Request() req,
+    @Req() req,
     @Res() res: Response,
   ) {
     this.logger.log(`Get CV ${fileName} request by ${req.user.email}`);
@@ -74,7 +82,8 @@ export class CvController {
   }
 
   @Delete(':cvId')
-  async deleteCV(@Param('cvId') cvId: string, @Request() req: any) {
+  @UseGuards(JwtAuthGuard)
+  async deleteCV(@Param('cvId') cvId: string, @Req() req: any) {
     this.logger.log(
       `Received delete request for CV ${cvId} from ${req.user.email}`,
     );
@@ -82,19 +91,12 @@ export class CvController {
     return { message: `CV ${cvId} deleted successfully` };
   }
 
-  @Get()
-  @UseGuards(JwtAuthGuard)
-  async listCvs(@Request() req) {
-    this.logger.log(`List CVs request by ${req.user.email}`);
-    return this.cvService.listCvs(req.user.role, req.user.email);
-  }
-
   @Post(':fileName/chat')
   @UseGuards(JwtAuthGuard)
   async chatCv(
     @Param('fileName') fileName: string,
     @Body() chatCvDto: ChatCvDto,
-    @Request() req,
+    @Req() req,
   ) {
     this.logger.log(`Chat CV ${fileName} request by ${req.user.email}`);
     if (!chatCvDto.message) {
@@ -108,11 +110,11 @@ export class CvController {
       req.user.role,
     );
   }
-  
+
   @Get(':fileName/chat-history')
-  async getChatHistory(@Param('fileName') fileName: string, @Request() req: any) {
+  @UseGuards(JwtAuthGuard)
+  async getChatHistory(@Param('fileName') fileName: string, @Req() req: any) {
     const user = req.user as { email: string; role: string };
     return this.cvService.getChatHistory(fileName, user.email, user.role);
   }
 }
-

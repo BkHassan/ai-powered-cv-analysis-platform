@@ -1,3 +1,4 @@
+// components/ChatWithCV.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -11,10 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Send, User } from "lucide-react";
+import { MessageSquare, Send, User, FileQuestion } from "lucide-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 interface CV {
   realId: string;
@@ -41,7 +43,7 @@ export function ChatWithCV({
   const searchParams = useSearchParams();
   const [cvs, setCvs] = useState<CV[]>([]);
   const [selectedCV, setSelectedCV] = useState<string>(() => {
-    const urlFileName = searchParams.get("fileName");
+  const urlFileName = searchParams.get("fileName");
     return (
       urlFileName ||
       (typeof window !== "undefined"
@@ -53,6 +55,7 @@ export function ChatWithCV({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (showInstructions) return;
@@ -74,9 +77,8 @@ export function ChatWithCV({
           console.error(`Fetch CVs failed: ${response.status} - ${errorText}`);
           throw new Error(`Failed to fetch CVs: ${errorText}`);
         }
-       const data = await response.json();
-        console.log("Fetched CVs:", data); // Debug CV list
-        setCvs(data);
+        const data = await response.json();
+        console.log("Fetched CVs:", data);
         if (!Array.isArray(data) || data.length === 0) {
           console.warn("No CVs returned from /cv");
           setCvs([]);
@@ -90,19 +92,17 @@ export function ChatWithCV({
           console.log(`URL fileName ${urlFileName} found in CV list`);
           setSelectedCV(urlFileName);
           localStorage.setItem("lastSelectedFileName", urlFileName);
-        } else if (urlFileName) {
-          console.warn(`URL fileName ${urlFileName} not found in CV list`);
-          toast.error("Selected CV not found");
-          setSelectedCV(data[0]?.fileName || "");
-          if (data[0]?.fileName) {
-            localStorage.setItem("lastSelectedFileName", data[0].fileName);
-            router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
+        } else if (urlFileName && retryCount < 3) {
+          console.warn(`URL fileName ${urlFileName} not found in CV list, retrying (${retryCount + 1}/3)`);
+          setTimeout(() => setRetryCount((prev) => prev + 1), 1000);
+        } else {
+          console.log(`Setting default CV to ${data[0]?.fileName || ""}`);
+          const defaultFileName = data[0]?.fileName || "";
+          setSelectedCV(defaultFileName);
+          if (defaultFileName) {
+            localStorage.setItem("lastSelectedFileName", defaultFileName);
+            router.push(`/admin/chat?fileName=${encodeURIComponent(defaultFileName)}`, { scroll: false });
           }
-        } else if (data[0]?.fileName) {
-          console.log(`Setting default CV to ${data[0].fileName}`);
-          setSelectedCV(data[0].fileName);
-          localStorage.setItem("lastSelectedFileName", data[0].fileName);
-          router.push(`/admin/chat?fileName=${encodeURIComponent(data[0].fileName)}`, { scroll: false });
         }
       } catch (error) {
         console.error("Error fetching CVs:", error);
@@ -112,7 +112,7 @@ export function ChatWithCV({
       }
     };
     fetchCvs();
-  }, [initialFileName, showInstructions, searchParams, router]);
+  }, [initialFileName, showInstructions, searchParams, router, retryCount]);
 
   useEffect(() => {
     if (!selectedCV || showInstructions) return;
@@ -125,8 +125,8 @@ export function ChatWithCV({
           toast.error("Please log in to view chat history");
           return;
         }
-        console.log(`Fetching chat history for fileName: ${selectedCV}`); // Debug selectedCV
-        setMessages([]); // Clear messages to avoid blinking
+        console.log(`Fetching chat history for fileName: ${selectedCV}`);
+        setMessages([]);
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/cv/${encodeURIComponent(
             selectedCV
@@ -161,7 +161,7 @@ export function ChatWithCV({
           throw new Error(`Failed to fetch chat history: ${errorText}`);
         }
         const data = await response.json();
-        console.log("Chat history response:", data); // Debug response
+        console.log("Chat history response:", data);
         const historyMessages: Message[] = data.flatMap(
           (entry: { query: string; response: string }) => [
             { role: "user", content: entry.query },
@@ -226,7 +226,7 @@ export function ChatWithCV({
       }
 
       const data = await response.json();
-      console.log("Send message response:", data); // Debug response
+      console.log("Send message response:", data);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.response },
@@ -248,11 +248,24 @@ export function ChatWithCV({
 
   return (
     <Card className="w-full shadow-xl shadow-purple-300/30">
-      <CardHeader className="pb-0">
+      <CardHeader className="pb-0 flex flex-row items-center justify-between">
         <CardTitle className="text-xl flex items-center gap-2">
           <MessageSquare size={20} className="font-bold" />
           Getting Started
         </CardTitle>
+        {!showInstructions && selectedCV && (
+          <Button
+            size="sm"
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+            asChild
+            aria-label="Generate quiz for selected CV"
+          >
+            <Link href={`/admin/quiz/${encodeURIComponent(selectedCV)}`}>
+              <FileQuestion className="h-4 w-4 mr-1" />
+              Generate Quiz
+            </Link>
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="pt-2">
         <div className="space-y-4">
@@ -275,7 +288,7 @@ export function ChatWithCV({
               <Select
                 value={selectedCV}
                 onValueChange={(value) => {
-                  console.log(`Selecting CV with fileName: ${value}`); // Debug selection
+                  console.log(`Selecting CV with fileName: ${value}`);
                   setSelectedCV(value);
                   localStorage.setItem("lastSelectedFileName", value);
                   router.push(

@@ -21,6 +21,8 @@ import {
 } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import * as crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
+import { RunnableLike } from '@langchain/core/runnables';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -65,6 +67,7 @@ export class CvService {
   private cvCollection: Collection;
   private userCollection: Collection;
   private chatHistoryCollection: Collection;
+  private quizCollection: Collection;
   private readonly logger = new Logger(CvService.name);
   private readonly embeddingFunction: IEmbeddingFunction;
   private readonly uploadFolder = path.join(__dirname, '..', 'Cvfiles');
@@ -74,7 +77,11 @@ export class CvService {
     private readonly configService: ConfigService,
   ) {
     this.embeddingFunction = new GeminiEmbeddingFunction(configService);
-    this.chromaClient = new ChromaClient({ path: 'http://chromadb:8000' });
+    this.chromaClient = new ChromaClient({
+      path:
+        this.configService.get<string>('CHROMADB_URL') ||
+        'http://chromadb:8000',
+    });
     this.initializeCollections();
   }
 
@@ -93,6 +100,10 @@ export class CvService {
           name: 'chat_history',
           embeddingFunction: this.embeddingFunction,
         });
+      this.quizCollection = await this.chromaClient.getOrCreateCollection({
+        name: 'quizzes',
+        embeddingFunction: this.embeddingFunction,
+      });
       this.logger.log('ChromaDB collections initialized');
     } catch (error) {
       this.logger.error(
@@ -121,12 +132,23 @@ export class CvService {
     }
   }
 
-  private async resolveFileNameToCvId(fileName: string): Promise<string> {
+  async resolveFileNameToCvId(
+    fileName: string,
+    retries = 3,
+    delay = 1000,
+  ): Promise<string> {
     try {
-      this.logger.debug(`Attempting to resolve fileName: ${fileName}`);
+      this.logger.debug(
+        `Attempting to resolve fileName: ${fileName} (Retries left: ${retries})`,
+      );
 
       // First try: get all documents and find the main CV
       const allCvs = await this.cvCollection.get();
+      this.logger.debug(
+        `Retrieved ${
+          allCvs.ids.length
+        } records from cvs collection: ${JSON.stringify(allCvs.ids)}`,
+      );
 
       // Find the main CV (non-chunk) document that matches the fileName
       for (let i = 0; i < allCvs.ids.length; i++) {
@@ -134,10 +156,15 @@ export class CvService {
 
         try {
           const doc = JSON.parse(allCvs.documents[i]!);
-          if (doc.fileName === fileName) {
+          if (doc.fileName.toLowerCase() === fileName.toLowerCase()) {
+            this.logger.debug(`Found matching main CV:
+              ${allCvs.ids[i]}`);
             return allCvs.ids[i];
           }
         } catch (e) {
+          this.logger.error(
+            `Failed to parse document for ID ${allCvs.ids[i]}: ${e.message}`,
+          );
           continue;
         }
       }
@@ -149,22 +176,37 @@ export class CvService {
           doc: doc,
         }))
         .filter((item) => item.id.includes('_chunk_'));
-
+      this.logger.debug(`Found ${chunks.length} chunks to check`);
       for (const chunk of chunks) {
         try {
           const parsedChunk = JSON.parse(chunk.doc!);
-          if (parsedChunk.fileName === fileName) {
+          this.logger.debug(
+            `Checking chunk ${chunk.id}: ${JSON.stringify(parsedChunk)}`,
+          );
+          if (parsedChunk.fileName.toLowerCase() === fileName.toLowerCase()) {
             // Extract the base cvId from the chunk id (e.g., "cv1_chunk_0" -> "cv1")
             const cvId = chunk.id.split('_chunk_')[0];
             this.logger.debug(`Found matching chunk, extracted cvId: ${cvId}`);
             return cvId;
           }
         } catch (e) {
+          this.logger.error(
+            `Failed to parse chunk document for ID ${chunk.id}: ${e.message}`,
+          );
           continue;
         }
       }
 
-      this.logger.warn(`No CV found for fileName: ${fileName}`);
+      if (retries > 0) {
+        this.logger.debug(
+          `No CV found for fileName: ${fileName}, retrying after ${delay}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.resolveFileNameToCvId(fileName, retries - 1, delay);
+      }
+      this.logger.warn(
+        `No CV found for fileName: ${fileName} after all retries`,
+      );
       throw new NotFoundException(`CV not found for fileName: ${fileName}`);
     } catch (error) {
       this.logger.error(
@@ -180,7 +222,7 @@ export class CvService {
     uploaderEmail: string,
     file: Express.Multer.File,
     name: string,
-  ): Promise<{ cvId: string }> {
+  ): Promise<{ cvId: string; fileName: string }> {
     try {
       const absoluteUploadFolder = path.resolve(this.uploadFolder);
       this.logger.log(`Upload folder path: ${absoluteUploadFolder}`);
@@ -229,6 +271,7 @@ export class CvService {
         name: name,
         fileName: fileName,
       });
+      this.logger.debug(`Storing CV metadata for ${cvId}: ${cvDocument}`);
 
       await this.cvCollection.add({
         ids: [cvId],
@@ -280,8 +323,9 @@ export class CvService {
       this.logger.log(
         `Stored ${chunks.length} chunks for CV ${cvId} in ChromaDB`,
       );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      return { cvId };
+      return { cvId, fileName };
     } catch (error) {
       this.logger.error('CV upload failed', error.stack, error.message);
       throw error;
@@ -429,48 +473,81 @@ export class CvService {
 
   async listCvs(requesterRole: string, requesterEmail: string): Promise<any[]> {
     try {
-      const result = await this.cvCollection.get();
-      this.logger.log(`Retrieved ${result.ids.length} CVs`);
+      this.logger.log(
+        `Listing CVs for ${requesterEmail} with role ${requesterRole}`,
+      );
 
-      if (result.ids.length === 0) {
+      // Retry up to 3 times to handle indexing delays
+      let result;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        result = await this.cvCollection.get({
+          include: ['documents', 'metadatas'] as any,
+        });
+        this.logger.log(
+          `Attempt ${attempt}: Retrieved ${
+            result.ids.length
+          } CVs: ${JSON.stringify(result.ids)}`,
+        );
+        if (result.ids.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!result || result.ids.length === 0) {
         this.logger.warn(`No CVs found in cvCollection for ${requesterEmail}`);
         return [];
       }
+
       let mainCvCounter = 0;
       const mainCvs = result.documents
         .map((doc, index) => {
-          if (result.ids[index].includes('_chunk_')) return null;
-          const parsedDoc = JSON.parse(doc!);
-          const fileName = parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
-          const filePath = path.join(this.uploadFolder, fileName);
-          return {
-            realId: result.ids[index],
-            indexId: ++mainCvCounter,
-            name: parsedDoc.name || 'CV',
-            email: result.metadatas[index]!.uploadedBy,
-            uploadDate: parsedDoc.uploadDate,
-            uploadedBy: result.metadatas[index]!.uploadedBy,
-            filePath: fs.existsSync(filePath) ? filePath : null,
-            fileName,
-            downloadUrl: `/cv/${fileName}`,
-          };
+          if (!doc || result.ids[index].includes('_chunk_')) return null;
+
+          try {
+            const parsedDoc = JSON.parse(doc);
+            const fileName =
+              parsedDoc.fileName || `${result.ids[index]}_cv.pdf`;
+            const filePath = path.join(this.uploadFolder, fileName);
+
+            this.logger.debug(
+              `Processing CV: ${JSON.stringify({
+                id: result.ids[index],
+                fileName,
+                exists: fs.existsSync(filePath),
+              })}`,
+            );
+
+            return {
+              realId: result.ids[index],
+              indexId: ++mainCvCounter,
+              name: parsedDoc.name || 'CV',
+              email: result.metadatas[index]?.uploadedBy || 'unknown',
+              uploadDate: parsedDoc.uploadDate || new Date().toISOString(),
+              uploadedBy: result.metadatas[index]?.uploadedBy || 'unknown',
+              filePath: fs.existsSync(filePath) ? filePath : null,
+              fileName,
+              downloadUrl: `/cv/${fileName}`,
+            };
+          } catch (error) {
+            this.logger.error(
+              `Failed to parse document for ID ${result.ids[index]}: ${doc}`,
+              error.stack,
+            );
+            return null;
+          }
         })
         .filter((cv) => cv !== null);
 
       this.logger.log(`Filtered ${mainCvs.length} main CVs`);
 
-      if (requesterRole === 'admin') {
-        return mainCvs;
-      } else {
-        const userCvs = mainCvs.filter((cv) => {
-          this.logger.debug(
-            `Comparing cv.uploadedBy: ${cv.uploadedBy} with requesterEmail: ${requesterEmail}`,
-          );
-          return cv.uploadedBy === requesterEmail;
-        });
-        this.logger.debug(`Filtered User CVs: ${JSON.stringify(userCvs)}`);
-        return userCvs;
-      }
+      const filteredCvs =
+        requesterRole === 'admin'
+          ? mainCvs
+          : mainCvs.filter((cv) => cv.uploadedBy === requesterEmail);
+
+      this.logger.log(
+        `Returning ${filteredCvs.length} CVs for ${requesterEmail}`,
+      );
+      return filteredCvs;
     } catch (error) {
       this.logger.error('List CVs failed', error.stack, error.message);
       throw error;
@@ -548,16 +625,15 @@ export class CvService {
       `);
 
       const chain = RunnableSequence.from([
-        {
-          context: () => context,
-          question: new RunnablePassthrough(),
-        },
         promptTemplate,
-        llm,
+        llm as unknown as RunnableLike<any, any>,
         new StringOutputParser(),
       ]);
 
-      const response = await chain.invoke(message);
+      const response = await chain.invoke({
+        context,
+        question: message,
+      });
       this.logger.log(`Chat response: ${response}`);
 
       const chatId = `chat_${cvId}_${Date.now()}`;
@@ -617,10 +693,7 @@ export class CvService {
       }
 
       const whereClause: Where = {
-        $and: [
-          { cvId: cvId } as Where,
-          { userEmail: requesterEmail } as Where,
-        ],
+        $and: [{ cvId: cvId } as Where, { userEmail: requesterEmail } as Where],
       };
       this.logger.debug(
         `Querying chat_history with where: ${JSON.stringify(whereClause)}`,
@@ -688,7 +761,6 @@ export class CvService {
       this.logger.error(
         `Chat history retrieval failed for fileName ${fileName}`,
         error.stack,
-        error.message,
       );
       throw error;
     }
