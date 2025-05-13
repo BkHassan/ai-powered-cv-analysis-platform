@@ -12,4 +12,4 @@ export default function ChatPage({ params }: PageProps) {
       <ChatWithCV initialFileName={`${params.fileName}.pdf`} />
     </div>
   );
-} 
+}

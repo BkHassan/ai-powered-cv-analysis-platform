@@ -1,11 +1,12 @@
+// useCVs.ts
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 interface CV {
   realId: string;
   indexId: number;
+  userIndexId: number; // Added for user-specific index
   name: string;
   email: string;
   uploadDate: string;
@@ -20,27 +21,15 @@ interface Status {
 export function useCVs(refreshKey: number) {
   const [cvs, setCvs] = useState<CV[]>([]);
   const [status, setStatus] = useState<Status>({ type: null, message: "" });
-  const router = useRouter();
 
   const fetchCVs = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setStatus({ type: "error", message: "Please log in to view CVs" });
-      router.push("/");
-      return;
-    }
-
     try {
+      const token = localStorage.getItem("token");
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          localStorage.removeItem("token");
-          router.push("/");
-          throw new Error("Session expired. Please log in again.");
-        }
         throw new Error("Failed to fetch CVs");
       }
 
@@ -54,17 +43,11 @@ export function useCVs(refreshKey: number) {
 
   useEffect(() => {
     fetchCVs();
-  }, [refreshKey, router]);
+  }, [refreshKey]);
 
   const handleDelete = async (cvId: string) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setStatus({ type: "error", message: "Please log in to delete CV" });
-      router.push("/");
-      return;
-    }
-
     try {
+      const token = localStorage.getItem("token");
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv/${cvId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -81,5 +64,5 @@ export function useCVs(refreshKey: number) {
     }
   };
 
-  return { cvs, status, handleDelete, fetchCVs }; // Expose fetchCVs for manual refresh
+  return { cvs, status, handleDelete, fetchCVs };
 }

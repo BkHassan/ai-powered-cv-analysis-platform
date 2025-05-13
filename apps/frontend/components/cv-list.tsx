@@ -21,7 +21,7 @@ import {
 import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuizResults } from "@/components/QuizResults";
-import { toast } from "react-toastify";
+
 
 interface CV {
   realId: string;

@@ -43,7 +43,7 @@ export function ChatWithCV({
   const searchParams = useSearchParams();
   const [cvs, setCvs] = useState<CV[]>([]);
   const [selectedCV, setSelectedCV] = useState<string>(() => {
-    const urlFileName = searchParams.get("fileName");
+  const urlFileName = searchParams.get("fileName");
     return (
       urlFileName ||
       (typeof window !== "undefined"

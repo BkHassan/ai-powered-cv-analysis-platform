@@ -20,13 +20,21 @@ export default function CVDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const router = useRouter();
 
+  // Authentication check
   useEffect(() => {
-    setToken(localStorage.getItem("token"));
-  }, []);
+    const storedToken = localStorage.getItem("token");
+    setToken(storedToken);
+    if (!storedToken) {
+      router.replace("/");
+    } else {
+      setIsCheckingAuth(false);
+    }
+  }, [router]);
 
+  // Fetch CV
   useEffect(() => {
     const fetchCV = async () => {
       if (!token) {
@@ -47,20 +55,19 @@ export default function CVDetailPage({
 
         if (!response.ok) {
           if (response.status === 404) throw new Error("CV not found");
-          else if (response.status === 401 || response.status === 403) {
+          if (response.status === 401 || response.status === 403) {
             localStorage.removeItem("token");
             router.push("/");
             throw new Error("Session expired. Please log in again.");
-          } else throw new Error("Failed to load CV");
+          }
+          throw new Error("Failed to load CV");
         }
 
-        // Extract filename from headers
         const contentDisposition = response.headers.get("content-disposition");
         const match = contentDisposition?.match(/filename="(.+)"/);
         const extractedFileName = match ? match[1] : `cv-${fileName}.pdf`;
         setFileName(extractedFileName);
 
-        // Create Blob URL for PDF
         const pdfBlob = await response.blob();
         const url = window.URL.createObjectURL(pdfBlob);
         setPdfUrl(url);
@@ -72,12 +79,12 @@ export default function CVDetailPage({
       }
     };
 
-    if (token) fetchCV();
+    if (token && !isCheckingAuth) fetchCV();
 
     return () => {
       if (pdfUrl) window.URL.revokeObjectURL(pdfUrl);
     };
-  }, [fileName, token]);
+  }, [fileName, token, isCheckingAuth]);
 
   const handleDownload = () => {
     if (pdfUrl && resolvedFileName) {
@@ -89,6 +96,15 @@ export default function CVDetailPage({
       document.body.removeChild(link);
     }
   };
+
+  // Render after all hooks
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-purple-100 to-pink-100">
+        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -110,8 +126,8 @@ export default function CVDetailPage({
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center h-screen">
-            <p>Loading CV...</p>
+          <div className="flex items-center justify-center h-screen bg-gradient-to-br from-purple-100 to-pink-100">
+            <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : error ? (
           <div className="container mx-auto text-center py-12">

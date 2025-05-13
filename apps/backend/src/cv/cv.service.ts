@@ -22,6 +22,7 @@ import {
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { RunnableLike } from '@langchain/core/runnables';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
@@ -278,7 +279,7 @@ export class CvService {
         metadatas: [{ uploadedBy: uploaderEmail }],
       });
       this.logger.log(`Stored CV metadata for ${cvId}`);
-      
+
       // Convert PDF to text and store chunks
       const text = await this.extractTextFromPdf(filePath);
       this.logger.log(`Extracted text length: ${text.length} characters`);
@@ -329,7 +330,6 @@ export class CvService {
       this.logger.error('CV upload failed', error.stack, error.message);
       throw error;
     }
-    
   }
 
   private async extractTextFromPdf(filePath: string): Promise<string> {
@@ -625,16 +625,15 @@ export class CvService {
       `);
 
       const chain = RunnableSequence.from([
-        {
-          context: () => context,
-          question: new RunnablePassthrough(),
-        },
         promptTemplate,
-        llm,
+        llm as unknown as RunnableLike<any, any>,
         new StringOutputParser(),
       ]);
 
-      const response = await chain.invoke(message);
+      const response = await chain.invoke({
+        context,
+        question: message,
+      });
       this.logger.log(`Chat response: ${response}`);
 
       const chatId = `chat_${cvId}_${Date.now()}`;
