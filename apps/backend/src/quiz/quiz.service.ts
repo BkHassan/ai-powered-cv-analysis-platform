@@ -9,7 +9,10 @@ import { ChromaClient, Collection } from 'chromadb';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
-import { RunnableSequence, RunnablePassthrough } from '@langchain/core/runnables';
+import {
+  RunnableSequence,
+  RunnablePassthrough,
+} from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import * as sgMail from '@sendgrid/mail';
 import { v4 as uuidv4 } from 'uuid';
@@ -131,7 +134,10 @@ export class QuizService {
       try {
         parsedResponse = JSON.parse(cleanedResponse);
       } catch (e) {
-        this.logger.error(`Failed to parse skills response: ${cleanedResponse}`, e);
+        this.logger.error(
+          `Failed to parse skills response: ${cleanedResponse}`,
+          e,
+        );
         throw new Error('Failed to parse skills response');
       }
 
@@ -147,7 +153,7 @@ export class QuizService {
     fileName: string,
     requesterEmail: string,
     requesterRole: string,
-    candidateEmail: string,
+    candidateEmail?: string,
     questionCount: number = 5,
   ): Promise<{
     quizId: string;
@@ -160,12 +166,15 @@ export class QuizService {
     }[];
   }> {
     try {
-      this.logger.log(`Generating quiz for fileName: ${fileName} with ${questionCount} questions`);
+      this.logger.log(
+        `Generating quiz for fileName: ${fileName} with ${questionCount} questions`,
+      );
   
       const cvId = await this.cvService.resolveFileNameToCvId(fileName);
   
+      // Fetch all documents related to the CV, including chunks
       const cvResult = await this.cvService['cvCollection'].get({
-        ids: [cvId],
+        where: { cvId }, // Fetch all documents with the same cvId
       });
   
       if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
@@ -185,8 +194,32 @@ export class QuizService {
         );
       }
   
-      const skillsResult = await this.getCvSkills(fileName);
+      // Combine text from all chunks
+      const cvText = cvResult.documents
+        .map((doc) => JSON.parse(doc || '{}').text || '')
+        .filter((text) => text)
+        .join('\n');
   
+      if (!cvText) {
+        this.logger.warn(`No text found for CV ${cvId}`);
+        throw new NotFoundException('No text found in CV');
+      }
+  
+      // Extract email from combined CV text
+      let extractedEmail = candidateEmail;
+      if (!extractedEmail) {
+        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+        const match = cvText.match(emailRegex);
+        if (match) {
+          extractedEmail = match[0];
+          this.logger.log(`Extracted email: ${extractedEmail}`);
+        } else {
+          this.logger.warn(`No email found in CV text for ${cvId}`);
+          throw new BadRequestException('No email found in CV');
+        }
+      }
+  
+      const skillsResult = await this.getCvSkills(fileName);
       const { skills, level } = skillsResult;
   
       if (!skills || skills.length === 0) {
@@ -210,16 +243,16 @@ export class QuizService {
         You are an AI assistant tasked with generating a technical quiz based on a candidate's skills and proficiency level. The skills are: {skills}. The proficiency level is: {level}. Generate a quiz with {questionCount} multiple-choice questions, each with 4 options and one correct answer. The questions should be appropriate for the given proficiency level (beginner, intermediate, or advanced).
   
         Provide the output as a JSON object, without wrapping it in markdown code blocks (e.g., \`\`\`json). Example format:
-        {
+        {{
           "questions": [
-            {
+            {{
               "id": "q1",
               "text": "Question text",
               "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
               "correct": 0
-            }
+      }}
           ]
-        }
+      }}
       `);
   
       const chain = RunnableSequence.from([
@@ -234,8 +267,6 @@ export class QuizService {
       ]);
   
       const response = await chain.invoke({});
-  
-      // Strip markdown code blocks if present
       const cleanedResponse = response
         .replace(/```json\n/, '')
         .replace(/\n```/, '')
@@ -252,11 +283,13 @@ export class QuizService {
       try {
         parsedResponse = JSON.parse(cleanedResponse);
       } catch (e) {
-        this.logger.error(`Failed to parse quiz response: ${cleanedResponse}`, e);
+        this.logger.error(
+          `Failed to parse quiz response: ${cleanedResponse}`,
+          e,
+        );
         throw new Error('Failed to parse quiz response');
       }
   
-      // Validate the number of questions
       if (parsedResponse.questions.length !== questionCount) {
         this.logger.warn(
           `Expected ${questionCount} questions, but received ${parsedResponse.questions.length}`,
@@ -290,7 +323,7 @@ export class QuizService {
       });
   
       await this.sendQuizEmail(
-        candidateEmail,
+        extractedEmail as string,
         quizLink,
         requesterEmail,
         requesterRole,
@@ -345,6 +378,85 @@ export class QuizService {
       };
     } catch (error) {
       this.logger.error('Quiz retrieval failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
+  async getQuizzesForCv(
+    fileName: string,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<{ quizIds: string[] }> {
+    try {
+      this.logger.log(
+        `Retrieving quizzes for CV ${fileName} by ${requesterEmail}`,
+      );
+      const cvId = await this.cvService.resolveFileNameToCvId(fileName);
+
+      const cvResult = await this.cvService['cvCollection'].get({
+        ids: [cvId],
+      });
+
+      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
+        this.logger.warn(`CV ${cvId} not found`);
+        throw new NotFoundException('CV not found');
+      }
+
+      if (
+        requesterRole !== 'admin' &&
+        cvResult.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        this.logger.warn(
+          `Unauthorized quiz access by ${requesterEmail} for CV ${cvId}`,
+        );
+        throw new ForbiddenException(
+          'You are not authorized to view quizzes for this CV',
+        );
+      }
+
+      const result = await this.quizCollection.get({
+        where: { fileName },
+      });
+
+      const quizIds = result.ids;
+      this.logger.log(`Found ${quizIds.length} quizzes for CV ${fileName}`);
+      return { quizIds };
+    } catch (error) {
+      this.logger.error('Quiz retrieval failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
+  async getAllQuizzes(
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<
+    { quizId: string; fileName: string; createdBy: string; createdAt: string }[]
+  > {
+    try {
+      this.logger.log(`Retrieving all quizzes for ${requesterEmail}`);
+      const query =
+        requesterRole === 'admin' ? undefined : { createdBy: requesterEmail };
+      const result = await this.quizCollection.get({ where: query });
+
+      const quizzes = result.documents.map((doc, index) => {
+        const parsed = JSON.parse(doc!);
+        return {
+          quizId: String(parsed.quizId),
+          fileName: String(parsed.fileName),
+          createdBy: String(result.metadatas[index]!.createdBy),
+          createdAt: String(parsed.createdAt),
+        };
+      });
+
+      this.logger.log(`Found ${quizzes.length} quizzes`);
+      return quizzes;
+    } catch (error) {
+      this.logger.error(
+        'All quizzes retrieval failed',
+        error.stack,
+        error.message,
+      );
       throw error;
     }
   }

@@ -1,7 +1,6 @@
-// app/admin/quiz/[fileName]/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { GenerateQuiz } from "@/components/generate-quiz";
 import { Card } from "@/components/ui/card";
 import { toast } from "react-toastify";
@@ -10,22 +9,28 @@ import { QuizResults } from "@/components/QuizResults";
 export default function QuizGenerationPage({
   params,
 }: {
-  params: { fileName: string };
+  params: Promise<{ fileName: string }>;
 }) {
+  const { fileName } = use(params);
   const [quizIds, setQuizIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  
   useEffect(() => {
     const fetchQuizzes = async () => {
       try {
         const token = localStorage.getItem("token");
-        if (!token) return;
+        if (!token) {
+          toast.error("Please log in to view quizzes");
+          return;
+        }
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(params.fileName)}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(fileName)}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            cache: "no-store",
           }
         );
         if (!response.ok) {
@@ -33,20 +38,20 @@ export default function QuizGenerationPage({
           throw new Error(errorData.message || "Failed to fetch quizzes");
         }
         const data = await response.json();
-        setQuizIds(data.quizIds);
+        setQuizIds(data.quizIds || []);
       } catch (err: any) {
-        toast.error(err.message);
+        toast.error(err.message || "Failed to load quizzes");
       } finally {
         setLoading(false);
       }
     };
     fetchQuizzes();
-  }, [params.fileName]);
+  }, [fileName]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl">
-        <GenerateQuiz fileName={params.fileName} cvId={params.fileName} />
+        <GenerateQuiz fileName={fileName} cvId={fileName} />
         {loading ? (
           <p className="p-4">Loading quizzes...</p>
         ) : quizIds.length > 0 ? (

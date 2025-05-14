@@ -23,6 +23,7 @@
     "@nestjs/platform-express": "^11.0.20",
     "axios": "^1.6.0",
     "bcrypt": "^5.1.0",
+    "chromadb": "^1.10.5",
     "passport-jwt": "^4.0.0",
     "uuid": "^9.0.0"
   }

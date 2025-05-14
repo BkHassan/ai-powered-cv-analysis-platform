@@ -67,7 +67,6 @@ export class CvService {
   private cvCollection: Collection;
   private userCollection: Collection;
   private chatHistoryCollection: Collection;
-  private quizCollection: Collection;
   private readonly logger = new Logger(CvService.name);
   private readonly embeddingFunction: IEmbeddingFunction;
   private readonly uploadFolder = path.join(__dirname, '..', 'Cvfiles');
@@ -100,10 +99,6 @@ export class CvService {
           name: 'chat_history',
           embeddingFunction: this.embeddingFunction,
         });
-      this.quizCollection = await this.chromaClient.getOrCreateCollection({
-        name: 'quizzes',
-        embeddingFunction: this.embeddingFunction,
-      });
       this.logger.log('ChromaDB collections initialized');
     } catch (error) {
       this.logger.error(

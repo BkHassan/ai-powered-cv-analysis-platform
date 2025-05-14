@@ -1,19 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { use } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { toast } from "react-toastify";
 
-export default function QuizPage({
-  params,
-}: {
-  params: Promise<{ quizId: string }>;
-}) {
-  const { quizId } = use(params);
+export default function QuizPage({ params }: { params: { quizId: string } }) {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
   const [questions, setQuestions] = useState<
     { id: string; text: string; options: string[]; correct: number }[]
   >([]);
@@ -25,17 +22,27 @@ export default function QuizPage({
 
   useEffect(() => {
     const fetchQuiz = async () => {
+      if (!token) {
+        setError("Invalid quiz link");
+        setLoading(false);
+        return;
+      }
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/quiz/${quizId}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/quiz/${
+            params.quizId
+          }?token=${encodeURIComponent(token)}`,
           { cache: "no-store" }
         );
         if (!response.ok) {
-          if (response.status === 404) throw new Error("Quiz not found");
-          throw new Error("Failed to load quiz");
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Failed to load quiz");
         }
         const data = await response.json();
         setQuestions(data.questions);
+        if (data.completedAt) {
+          setSubmitted(true);
+        }
       } catch (err: any) {
         console.error("Error fetching quiz:", err);
         setError(err.message);
@@ -44,7 +51,7 @@ export default function QuizPage({
       }
     };
     fetchQuiz();
-  }, [quizId]);
+  }, [params.quizId, token]);
 
   const handleAnswerChange = (questionId: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: parseInt(value) }));
@@ -55,11 +62,17 @@ export default function QuizPage({
       toast.error("Please answer all questions");
       return;
     }
+    if (!token) {
+      toast.error("Invalid quiz link");
+      return;
+    }
     setLoading(true);
     try {
       const timeTaken = Math.round((Date.now() - startTime) / 1000);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/quiz/${quizId}/submit`,
+        `${process.env.NEXT_PUBLIC_API_URL}/quiz/${
+          params.quizId
+        }/submit?token=${encodeURIComponent(token)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -67,14 +80,14 @@ export default function QuizPage({
         }
       );
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to submit quiz");
       }
       setSubmitted(true);
       toast.success("Quiz submitted successfully!");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error submitting quiz:", err);
-      toast.error("Failed to submit quiz");
+      toast.error(err.message || "Failed to submit quiz");
     } finally {
       setLoading(false);
     }
@@ -99,12 +112,19 @@ export default function QuizPage({
                 <div key={question.id} className="space-y-2">
                   <p className="font-medium">{question.text}</p>
                   <RadioGroup
-                    onValueChange={(value) => handleAnswerChange(question.id, value)}
+                    onValueChange={(value) =>
+                      handleAnswerChange(question.id, value)
+                    }
                   >
                     {question.options.map((option, index) => (
                       <div key={index} className="flex items-center space-x-2">
-                        <RadioGroupItem value={index.toString()} id={`${question.id}-${index}`} />
-                        <Label htmlFor={`${question.id}-${index}`}>{option}</Label>
+                        <RadioGroupItem
+                          value={index.toString()}
+                          id={`${question.id}-${index}`}
+                        />
+                        <Label htmlFor={`${question.id}-${index}`}>
+                          {option}
+                        </Label>
                       </div>
                     ))}
                   </RadioGroup>
