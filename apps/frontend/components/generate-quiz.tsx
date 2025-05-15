@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -12,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "react-toastify";
 import { BookOpen, Copy, Send } from "lucide-react";
 
@@ -21,18 +21,17 @@ interface GenerateQuizProps {
 }
 
 export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
-  const [candidateEmail, setCandidateEmail] = useState("");
   const [questionCount, setQuestionCount] = useState("5");
   const [quizData, setQuizData] = useState<{
     quizId: string;
     link: string;
+    candidateEmail: string;
     questions: {
       id: string;
       text: string;
       options: string[];
       correct: number;
     }[];
-    candidateEmail: string;
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -76,14 +75,19 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
   };
 
   const handleCopyLink = () => {
-    if (quizData?.link || quizData?.candidateEmail) {
+    if (quizData?.link) {
       navigator.clipboard.writeText(quizData.link);
-      toast.success("Quiz link copied to clipboard!");
+      toast.success("Quiz link copied!");
+    } else {
+      toast.error("No quiz link available");
     }
   };
 
   const handleSendEmail = async () => {
-    if (!quizData?.link) return;
+    if (!quizData?.link || !quizData?.candidateEmail) {
+      toast.error("Quiz link or candidate email missing");
+      return;
+    }
     setIsSending(true);
     try {
       const token = localStorage.getItem("token");
@@ -149,26 +153,29 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
           <div className="space-y-4">
             <div>
               <Label>Candidate Email</Label>
-              <p className="text-gray-600">{quizData.candidateEmail}</p>
+              <p className="text-gray-600">{quizData.candidateEmail || "No email available"}</p>
             </div>
             <h3 className="text-lg font-medium">Generated Questions</h3>
-            {quizData.questions.map((question) => (
-              <div key={question.id} className="border p-4 rounded-md">
-                <p className="font-medium">{question.text}</p>
-                <ul className="list-disc pl-5 mt-2">
-                  {question.options.map((option, index) => (
-                    <li
-                      key={index}
-                      className={
-                        index === question.correct ? "text-green-600" : ""
-                      }
-                    >
-                      {option}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            <div className="space-y-6">
+              {quizData.questions.map((question) => (
+                <div key={question.id} className="border p-4 rounded-md">
+                  <p className="font-medium">{question.text}</p>
+                  <RadioGroup disabled>
+                    {question.options.map((option, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <RadioGroupItem
+                          value={index.toString()}
+                          id={`${question.id}-${index}`}
+                        />
+                        <Label htmlFor={`${question.id}-${index}`}>
+                          {option}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              ))}
+            </div>
             <div className="flex space-x-2">
               <Button onClick={handleCopyLink} className="flex-1">
                 <Copy size={16} className="mr-2" />
@@ -176,13 +183,20 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
               </Button>
               <Button
                 onClick={handleSendEmail}
-                disabled={isSending}
+                disabled={isSending || !quizData.candidateEmail}
                 className="flex-1"
               >
                 <Send size={16} className="mr-2" />
                 {isSending ? "Sending..." : "Send Email"}
               </Button>
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setQuizData(null)}
+              className="w-full mt-2"
+            >
+              Generate New Quiz
+            </Button>
           </div>
         )}
       </CardContent>

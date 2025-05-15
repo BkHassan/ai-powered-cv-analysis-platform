@@ -1,4 +1,3 @@
-// components/QuizResults.js
 "use client";
 
 import { useState, useEffect } from "react";
@@ -33,13 +32,19 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
         );
         if (!response.ok) {
           const errorData = await response.json();
+          if (errorData.message === "Quiz has not been completed") {
+            setError("Quiz has not been completed");
+            return;
+          }
           throw new Error(errorData.message || "Failed to fetch results");
         }
         const data = await response.json();
         setResults(data);
       } catch (err: any) {
         setError(err.message);
-        if (!simple) toast.error(err.message);
+        if (!simple && err.message !== "Quiz has not been completed") {
+          toast.error(err.message);
+        }
       } finally {
         setLoading(false);
       }
@@ -50,7 +55,7 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
   if (simple) {
     return results && !loading && !error ? (
       <span className="text-sm text-green-600">{results.score}%</span>
-    ) : null;
+    ) : null; // Don't show "Not completed" in CV cards
   }
 
   return (
@@ -58,7 +63,7 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
       {loading ? (
         <p>Loading results...</p>
       ) : error ? (
-        <p className="text-red-500">{error}</p>
+        <p className="text-gray-500">{error}</p>
       ) : results ? (
         <div>
           <p><strong>Score:</strong> {results.score}%</p>

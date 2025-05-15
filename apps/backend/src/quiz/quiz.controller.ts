@@ -31,6 +31,13 @@ export class QuizController {
       this.logger.warn('Missing fileName in request body');
       throw new BadRequestException('fileName is required');
     }
+    if (
+      body.questionCount &&
+      (body.questionCount < 1 || body.questionCount > 20)
+    ) {
+      this.logger.warn(`Invalid questionCount: ${body.questionCount}`);
+      throw new BadRequestException('questionCount must be between 1 and 20');
+    }
     return this.quizService.generateQuiz(
       body.fileName,
       req.user.email,
@@ -98,6 +105,11 @@ export class QuizController {
       this.logger.warn('Missing email or quizLink in request body');
       throw new BadRequestException('Email and quizLink are required');
     }
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    if (!emailRegex.test(body.email)) {
+      this.logger.warn(`Invalid email format: ${body.email}`);
+      throw new BadRequestException('Invalid email format');
+    }
     await this.quizService.sendQuizEmail(
       body.email,
       body.quizLink,
@@ -120,8 +132,24 @@ export class QuizController {
     @Param('fileName') fileName: string,
     @Request() req: any,
   ) {
-    this.logger.log(`Get quizzes for CV ${fileName} by ${req.user.email}`);
+    this.logger.log(`Get qlast uizzes for CV ${fileName} by ${req.user.email}`);
     return this.quizService.getQuizzesForCv(
+      fileName,
+      req.user.email,
+      req.user.role,
+    );
+  }
+
+  @Get('cv/:fileName/attempts')
+  @UseGuards(JwtAuthGuard)
+  async getQuizAttempts(
+    @Param('fileName') fileName: string,
+    @Request() req: any,
+  ) {
+    this.logger.log(
+      `Get quiz attempts for CV ${fileName} by ${req.user.email}`,
+    );
+    return this.quizService.getQuizAttempts(
       fileName,
       req.user.email,
       req.user.role,

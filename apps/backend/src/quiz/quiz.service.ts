@@ -22,6 +22,7 @@ import * as crypto from 'crypto';
 @Injectable()
 export class QuizService {
   private quizCollection: Collection;
+  private quizAttemptsCollection: Collection;
   private readonly logger = new Logger(QuizService.name);
 
   constructor(
@@ -49,7 +50,12 @@ export class QuizService {
         name: 'quizzes',
         embeddingFunction: this.cvService['embeddingFunction'],
       });
-      this.logger.log('Quiz ChromaDB collection initialized');
+      this.quizAttemptsCollection =
+        await this.chromaClient.getOrCreateCollection({
+          name: 'quiz_attempts',
+          embeddingFunction: this.cvService['embeddingFunction'],
+        });
+      this.logger.log('Quiz and Quiz Attempts ChromaDB collection initialized');
     } catch (error) {
       this.logger.error(
         'Failed to initialize quiz ChromaDB collection',
@@ -149,6 +155,86 @@ export class QuizService {
     }
   }
 
+  async getCvEmail(fileName: string): Promise<string> {
+    try {
+      this.logger.log(`Extracting email for fileName: ${fileName}`);
+
+      const cvId = await this.cvService.resolveFileNameToCvId(fileName);
+
+      const result = await this.cvService['cvCollection'].get({
+        where: { cvId },
+      });
+
+      if (result.ids.length === 0 || !result.documents[0]) {
+        this.logger.warn(`CV ${cvId} not found`);
+        throw new NotFoundException('CV not found');
+      }
+
+      // Check metadata first
+      const metadataEmail = result.metadatas[0]?.candidateEmail;
+      if (metadataEmail) {
+        this.logger.log(`Email found in metadata: ${metadataEmail}`);
+        return metadataEmail as string;
+      }
+
+      const chunks = result.documents
+        .map((doc) => JSON.parse(doc || '{}').text || '')
+        .filter((text) => text)
+        .join('\n');
+
+      if (!chunks) {
+        this.logger.warn(`No text chunks found for CV ${cvId}`);
+        throw new NotFoundException('No text found in CV');
+      }
+
+      this.logger.debug(`Joined CV text: ${chunks.substring(0, 500)}...`);
+
+      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
+      if (!openaiApiKey) {
+        this.logger.error('OPENAI_API_KEY is not defined in .env');
+        throw new Error('OPENAI_API_KEY is required');
+      }
+
+      const llm = new ChatOpenAI({
+        openAIApiKey: openaiApiKey,
+        modelName: 'gpt-4o-mini',
+        temperature: 0.5,
+      });
+
+      const promptTemplate = PromptTemplate.fromTemplate(`
+        You are an AI assistant tasked with extracting the candidate's email address from a CV. The CV text is provided below and may be in any language or format. Identify the email address explicitly mentioned (e.g., "hello@reallygreatsite.com") or implied (e.g., "contact: hello at reallygreatsite dot com"). Return the email as a string in standard format (e.g., "user@domain.com"). If no email is found, return an empty string.
+
+        CV Text:
+        {cvText}
+
+        Provide the output as a plain string, not wrapped in JSON or markdown.
+      `);
+
+      const chain = RunnableSequence.from([
+        { cvText: new RunnablePassthrough() },
+        promptTemplate,
+        llm,
+        new StringOutputParser(),
+      ]);
+
+      const response = await chain.invoke(chunks);
+
+      // Trim and validate the response
+      const extractedEmail = response.trim();
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+      if (extractedEmail && !emailRegex.test(extractedEmail)) {
+        this.logger.warn(`Invalid email format extracted: ${extractedEmail}`);
+        return '';
+      }
+
+      this.logger.log(`Extracted email: ${extractedEmail || 'none'}`);
+      return extractedEmail;
+    } catch (error) {
+      this.logger.error('Email extraction failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
   async generateQuiz(
     fileName: string,
     requesterEmail: string,
@@ -158,6 +244,7 @@ export class QuizService {
   ): Promise<{
     quizId: string;
     link: string;
+    candidateEmail: string;
     questions: {
       id: string;
       text: string;
@@ -169,19 +256,18 @@ export class QuizService {
       this.logger.log(
         `Generating quiz for fileName: ${fileName} with ${questionCount} questions`,
       );
-  
+
       const cvId = await this.cvService.resolveFileNameToCvId(fileName);
-  
-      // Fetch all documents related to the CV, including chunks
+
       const cvResult = await this.cvService['cvCollection'].get({
-        where: { cvId }, // Fetch all documents with the same cvId
+        where: { cvId },
       });
-  
+
       if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
         this.logger.warn(`CV ${cvId} not found`);
         throw new NotFoundException('CV not found');
       }
-  
+
       if (
         requesterRole !== 'admin' &&
         cvResult.metadatas[0]?.uploadedBy !== requesterEmail
@@ -193,55 +279,40 @@ export class QuizService {
           'You are not authorized to generate a quiz for this CV',
         );
       }
-  
-      // Combine text from all chunks
-      const cvText = cvResult.documents
-        .map((doc) => JSON.parse(doc || '{}').text || '')
-        .filter((text) => text)
-        .join('\n');
-  
-      if (!cvText) {
-        this.logger.warn(`No text found for CV ${cvId}`);
-        throw new NotFoundException('No text found in CV');
-      }
-  
-      // Extract email from combined CV text
+
       let extractedEmail = candidateEmail;
       if (!extractedEmail) {
-        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-        const match = cvText.match(emailRegex);
-        if (match) {
-          extractedEmail = match[0];
-          this.logger.log(`Extracted email: ${extractedEmail}`);
-        } else {
+        extractedEmail = await this.getCvEmail(fileName);
+        if (!extractedEmail) {
           this.logger.warn(`No email found in CV text for ${cvId}`);
           throw new BadRequestException('No email found in CV');
         }
+        this.logger.log(`Extracted email: ${extractedEmail}`);
       }
-  
+
       const skillsResult = await this.getCvSkills(fileName);
       const { skills, level } = skillsResult;
-  
+
       if (!skills || skills.length === 0) {
         this.logger.warn(`No skills found for CV ${cvId}`);
         throw new BadRequestException('No skills found to generate a quiz');
       }
-  
+
       const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
       if (!openaiApiKey) {
         this.logger.error('OPENAI_API_KEY is not defined in .env');
         throw new Error('OPENAI_API_KEY is required');
       }
-  
+
       const llm = new ChatOpenAI({
         openAIApiKey: openaiApiKey,
         modelName: 'gpt-4o-mini',
         temperature: 0.7,
       });
-  
+
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant tasked with generating a technical quiz based on a candidate's skills and proficiency level. The skills are: {skills}. The proficiency level is: {level}. Generate a quiz with {questionCount} multiple-choice questions, each with 4 options and one correct answer. The questions should be appropriate for the given proficiency level (beginner, intermediate, or advanced).
-  
+
         Provide the output as a JSON object, without wrapping it in markdown code blocks (e.g., \`\`\`json). Example format:
         {{
           "questions": [
@@ -250,11 +321,11 @@ export class QuizService {
               "text": "Question text",
               "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
               "correct": 0
-      }}
+            }}
           ]
-      }}
+        }}
       `);
-  
+
       const chain = RunnableSequence.from([
         {
           skills: () => skills.join(', '),
@@ -265,13 +336,13 @@ export class QuizService {
         llm,
         new StringOutputParser(),
       ]);
-  
+
       const response = await chain.invoke({});
       const cleanedResponse = response
         .replace(/```json\n/, '')
         .replace(/\n```/, '')
         .trim();
-  
+
       let parsedResponse: {
         questions: {
           id: string;
@@ -289,7 +360,7 @@ export class QuizService {
         );
         throw new Error('Failed to parse quiz response');
       }
-  
+
       if (parsedResponse.questions.length !== questionCount) {
         this.logger.warn(
           `Expected ${questionCount} questions, but received ${parsedResponse.questions.length}`,
@@ -298,14 +369,43 @@ export class QuizService {
           `Generated quiz does not contain the requested number of questions (${questionCount})`,
         );
       }
-  
-      const quizId = uuidv4();
+
+      // Validate inputs for ChromaDB query
+      if (!cvId || !fileName) {
+        this.logger.error(`Invalid cvId: ${cvId} or fileName: ${fileName}`);
+        throw new BadRequestException('Invalid CV ID or file name');
+      }
+
+      // Check for existing quiz with explicit $and operator
+      this.logger.debug(
+        `Querying quizzes with cvId: ${cvId}, fileName: ${fileName}`,
+      );
+      const existingQuizzes = await this.quizCollection.get({
+        where: {
+          $and: [{ cvId: cvId }, { fileName: fileName }],
+        },
+      });
+
+      let quizId = existingQuizzes.ids[0];
+      const isNewQuiz = !quizId;
+      if (isNewQuiz) {
+        quizId = uuidv4();
+      }
+
       const secureToken = crypto.randomBytes(16).toString('hex');
       const appUrl =
         this.configService.get<string>('NEXT_PUBLIC_APP_URL') ||
         'http://localhost:3000';
       const quizLink = `${appUrl}/quiz/${quizId}?token=${secureToken}`;
-  
+
+      // Get attempt number
+      const attempts = await this.quizAttemptsCollection.get({
+        where: {
+          $and: [{ cvId: cvId }, { fileName: fileName }],
+        },
+      });
+      const attemptNumber = attempts.ids.length + 1;
+
       const quizDocument = JSON.stringify({
         quizId,
         cvId,
@@ -314,26 +414,48 @@ export class QuizService {
         secureToken,
         createdAt: new Date().toISOString(),
         createdBy: requesterEmail,
+        candidateEmail: extractedEmail,
+        attemptNumber,
       });
-  
-      await this.quizCollection.add({
-        ids: [quizId],
-        documents: [quizDocument],
-        metadatas: [{ cvId, fileName, createdBy: requesterEmail }],
-      });
-  
-      await this.sendQuizEmail(
-        extractedEmail as string,
-        quizLink,
-        requesterEmail,
-        requesterRole,
+
+      if (isNewQuiz) {
+        await this.quizCollection.add({
+          ids: [quizId],
+          documents: [quizDocument],
+          metadatas: [
+            {
+              cvId,
+              fileName,
+              createdBy: requesterEmail,
+              candidateEmail: extractedEmail,
+              attemptNumber,
+            },
+          ],
+        });
+      } else {
+        await this.quizCollection.upsert({
+          ids: [quizId],
+          documents: [quizDocument],
+          metadatas: [
+            {
+              cvId,
+              fileName,
+              createdBy: requesterEmail,
+              candidateEmail: extractedEmail,
+              attemptNumber,
+            },
+          ],
+        });
+      }
+
+      this.logger.log(
+        `Stored quiz ${quizId} for CV ${cvId}, attempt ${attemptNumber}`,
       );
-  
-      this.logger.log(`Stored quiz ${quizId} for CV ${cvId}`);
-  
+
       return {
         quizId,
         link: quizLink,
+        candidateEmail: extractedEmail,
         questions: parsedResponse.questions,
       };
     } catch (error) {
@@ -349,6 +471,7 @@ export class QuizService {
     quizId: string;
     cvId: string;
     fileName: string;
+    candidateEmail: string;
     questions: {
       id: string;
       text: string;
@@ -375,9 +498,71 @@ export class QuizService {
         fileName: quizDoc.fileName,
         questions: quizDoc.questions,
         completedAt: quizDoc.completedAt,
+        candidateEmail: quizDoc.candidateEmail || '',
       };
     } catch (error) {
       this.logger.error('Quiz retrieval failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
+  async getQuizAttempts(
+    fileName: string,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<
+    { attemptNumber: number; score?: number; completedAt?: string }[]
+  > {
+    try {
+      this.logger.log(
+        `Retrieving quiz attempts for CV ${fileName} by ${requesterEmail}`,
+      );
+      const cvId = await this.cvService.resolveFileNameToCvId(fileName);
+
+      const cvResult = await this.cvService['cvCollection'].get({
+        ids: [cvId],
+      });
+
+      if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
+        this.logger.warn(`CV ${cvId} not found`);
+        throw new NotFoundException('CV not found');
+      }
+
+      if (
+        requesterRole !== 'admin' &&
+        cvResult.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        this.logger.warn(
+          `Unauthorized quiz attempts access by ${requesterEmail} for CV ${cvId}`,
+        );
+        throw new ForbiddenException(
+          'You are not authorized to view quiz attempts for this CV',
+        );
+      }
+
+      const result = await this.quizAttemptsCollection.get({
+        where: { fileName },
+      });
+
+      const attempts = result.documents
+        .map((doc) => JSON.parse(doc!))
+        .sort((a, b) => a.attemptNumber - b.attemptNumber)
+        .map((attempt) => ({
+          attemptNumber: attempt.attemptNumber,
+          score: attempt.score,
+          completedAt: attempt.completedAt,
+        }));
+
+      this.logger.log(
+        `Found ${attempts.length} quiz attempts for CV ${fileName}`,
+      );
+      return attempts;
+    } catch (error) {
+      this.logger.error(
+        'Quiz attempts retrieval failed',
+        error.stack,
+        error.message,
+      );
       throw error;
     }
   }
@@ -431,7 +616,13 @@ export class QuizService {
     requesterEmail: string,
     requesterRole: string,
   ): Promise<
-    { quizId: string; fileName: string; createdBy: string; createdAt: string }[]
+    {
+      quizId: string;
+      fileName: string;
+      createdBy: string;
+      createdAt: string;
+      candidateEmail: string;
+    }[]
   > {
     try {
       this.logger.log(`Retrieving all quizzes for ${requesterEmail}`);
@@ -446,6 +637,7 @@ export class QuizService {
           fileName: String(parsed.fileName),
           createdBy: String(result.metadatas[index]!.createdBy),
           createdAt: String(parsed.createdAt),
+          candidateEmail: String(parsed.candidateEmail || ''),
         };
       });
 
@@ -572,13 +764,40 @@ export class QuizService {
       quizDoc.timeTaken = timeTaken;
       quizDoc.completedAt = new Date().toISOString();
 
+      // Update quiz in quizzes collection
       await this.quizCollection.upsert({
         ids: [quizId],
         documents: [JSON.stringify(quizDoc)],
         metadatas: [result.metadatas[0]!],
       });
 
-      this.logger.log(`Quiz ${quizId} answers submitted: score=${score}%`);
+      // Store attempt in quiz_attempts collection
+      const attemptDocument = JSON.stringify({
+        quizId,
+        cvId: quizDoc.cvId,
+        fileName: quizDoc.fileName,
+        attemptNumber: quizDoc.attemptNumber,
+        score,
+        timeTaken,
+        completedAt: quizDoc.completedAt,
+        createdAt: quizDoc.createdAt,
+      });
+
+      await this.quizAttemptsCollection.add({
+        ids: [`${quizId}_${quizDoc.attemptNumber}`],
+        documents: [attemptDocument],
+        metadatas: [
+          {
+            cvId: quizDoc.cvId,
+            fileName: quizDoc.fileName,
+            attemptNumber: quizDoc.attemptNumber,
+          },
+        ],
+      });
+
+      this.logger.log(
+        `Quiz ${quizId} answers submitted: score=${score}%, attempt ${quizDoc.attemptNumber}`,
+      );
     } catch (error) {
       this.logger.error(
         'Quiz answer submission failed',
@@ -651,6 +870,7 @@ export class QuizService {
           </a>
         `,
       };
+      this.logger.debug(`Email content: ${JSON.stringify(msg)}`);
 
       await sgMail.send(msg);
       this.logger.log(`Quiz email sent to ${email}`);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { toast } from "react-toastify";
 
-export default function QuizPage({ params }: { params: { quizId: string } }) {
+export default function QuizPage({ params }: { params: Promise<{ quizId: string }> }) {
+  const { quizId } = use(params); // Unwrap params
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const [questions, setQuestions] = useState<
@@ -29,9 +30,7 @@ export default function QuizPage({ params }: { params: { quizId: string } }) {
       }
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/quiz/${
-            params.quizId
-          }?token=${encodeURIComponent(token)}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/quiz/${quizId}?token=${encodeURIComponent(token)}`,
           { cache: "no-store" }
         );
         if (!response.ok) {
@@ -51,7 +50,7 @@ export default function QuizPage({ params }: { params: { quizId: string } }) {
       }
     };
     fetchQuiz();
-  }, [params.quizId, token]);
+  }, [quizId, token]);
 
   const handleAnswerChange = (questionId: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: parseInt(value) }));
@@ -70,9 +69,7 @@ export default function QuizPage({ params }: { params: { quizId: string } }) {
     try {
       const timeTaken = Math.round((Date.now() - startTime) / 1000);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/quiz/${
-          params.quizId
-        }/submit?token=${encodeURIComponent(token)}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/quiz/${quizId}/submit?token=${encodeURIComponent(token)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

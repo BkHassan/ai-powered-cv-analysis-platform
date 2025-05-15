@@ -1,4 +1,3 @@
-// components/CVList.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -37,7 +36,7 @@ interface CVCardProps {
 }
 
 function CVCard({ cv, onDelete }: CVCardProps) {
-  const [quizIds, setQuizIds] = useState<string[]>([]);
+  const [quizIds, setQuizIds] = useState<string | undefined>(undefined);
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
 
   useEffect(() => {
@@ -53,6 +52,7 @@ function CVCard({ cv, onDelete }: CVCardProps) {
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            cache: "no-store",
           }
         );
         if (!response.ok) {
@@ -80,9 +80,9 @@ function CVCard({ cv, onDelete }: CVCardProps) {
         </CardTitle>
         <div className="flex gap-1">
           {!isLoadingQuizzes &&
-            quizIds.map((quizId) => (
-              <QuizResults key={quizId} quizId={quizId} simple />
-            ))}
+            quizIds && (
+              <QuizResults quizId={quizIds} simple />
+            )}
         </div>
       </CardHeader>
       <CardContent className="p-4 space-y-3">
