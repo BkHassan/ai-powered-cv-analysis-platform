@@ -6,7 +6,7 @@ import { ChatWithCV } from "@/components/chat-with-cv";
 import { CVList } from "@/components/cv-list";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import { jwtDecode } from 'jwt-decode';
 
 
 export default function AdminDashboard() {
@@ -21,11 +21,25 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
+  
     if (!token) {
-      router.replace("/");
+      router.push("/");
       return;
-    } else {
-      setIsCheckingAuth(false);
+    }
+  
+    try {
+      const decoded = jwtDecode<{ exp: number }>(token);
+      const now = Date.now() / 1000;
+  
+      if (decoded.exp < now) {
+        localStorage.removeItem("token");
+        router.push("/");
+      } else {
+        setIsCheckingAuth(false);
+      }
+    } catch {
+      localStorage.removeItem("token");
+      router.push("/");
     }
   }, [router]);
 

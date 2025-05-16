@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,8 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showOtpInput, setShowOtpInput] = useState(false);
-  const [otp, setOtp] = useState("");
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -43,7 +44,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       minLength: password.length >= 8,
       hasUpperCase: /[A-Z]/.test(password),
       hasNumber: /\d/.test(password),
-      hasSpecialChar: /[!@#$%^&*()_+\-=$$  $${};':"\\|,.<>\/?]/.test(password),
+      hasSpecialChar: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>\/?]/.test(password),
     });
   };
 
@@ -61,6 +62,49 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
     setFormData({ ...formData, [name]: value });
     if (name === "password") {
       validatePassword(value);
+    }
+  };
+
+  const handleOtpDigitChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) => {
+    const value = e.target.value;
+    if (/^\d?$/.test(value)) {
+      const newOtpDigits = [...otpDigits];
+      newOtpDigits[index] = value;
+      setOtpDigits(newOtpDigits);
+
+      // Move to next input if a digit is entered
+      if (value && index < 5) {
+        inputRefs.current[index + 1]?.focus();
+      }
+    }
+  };
+
+  const handleOtpKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    index: number
+  ) => {
+    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (
+    e: React.ClipboardEvent<HTMLInputElement>,
+    index: number
+  ) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "");
+    if (pasted.length > 0) {
+      const newOtpDigits = [...otpDigits];
+      for (let i = 0; i < Math.min(pasted.length, 6 - index); i++) {
+        newOtpDigits[index + i] = pasted[i];
+      }
+      setOtpDigits(newOtpDigits);
+      const nextIndex = Math.min(index + pasted.length, 5);
+      inputRefs.current[nextIndex]?.focus();
     }
   };
 
@@ -105,7 +149,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       }
 
       const { accessToken } = await response.json();
-      localStorage.setItem("token", accessToken); // Store token for later use
+      localStorage.setItem("token", accessToken);
       toast.success("Please check your email for the OTP.");
       setShowOtpInput(true);
     } catch (error: any) {
@@ -119,6 +163,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
     e.preventDefault();
     setIsLoading(true);
 
+    const otp = otpDigits.join("");
     if (!/^\d{6}$/.test(otp)) {
       toast.error("OTP must be a 6-digit number");
       setIsLoading(false);
@@ -298,19 +343,31 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
         </form>
       ) : (
         <form onSubmit={handleOtpSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="otp">Enter OTP</Label>
+          <div className="space-y-2 pl-14">
+            <Label>Enter OTP</Label>
             <p className="text-sm text-muted-foreground">
               A 6-digit code was sent to {formData.email}
             </p>
-            <Input
-              id="otp"
-              placeholder="123456"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              required
-              maxLength={6}
-            />
+            <div className="flex space-x-2">
+              {otpDigits.map((digit, index) => (
+                <Input
+                  key={index}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpDigitChange(e, index)}
+                  onKeyDown={(e) => handleOtpKeyDown(e, index)}
+                  onPaste={(e) => handleOtpPaste(e, index)}
+                  ref={(el) => {
+                    inputRefs.current[index] = el;
+                  }}
+                  className="w-12 h-12 text-center text-lg"
+                  required
+                  autoFocus={index === 0}
+                />
+              ))}
+            </div>
           </div>
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (

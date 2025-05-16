@@ -1,4 +1,3 @@
-// components/CVList.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -22,7 +21,6 @@ import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QuizResults } from "@/components/QuizResults";
 
-
 interface CV {
   realId: string;
   indexId: number;
@@ -38,7 +36,7 @@ interface CVCardProps {
 }
 
 function CVCard({ cv, onDelete }: CVCardProps) {
-  const [quizIds, setQuizIds] = useState<string[]>([]);
+  const [quizId, setQuizId] = useState<string | undefined>(undefined);
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
 
   useEffect(() => {
@@ -47,11 +45,14 @@ function CVCard({ cv, onDelete }: CVCardProps) {
         const token = localStorage.getItem("token");
         if (!token) return;
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(cv.fileName)}`,
+          `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(
+            cv.fileName
+          )}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
             },
+            cache: "no-store",
           }
         );
         if (!response.ok) {
@@ -59,7 +60,7 @@ function CVCard({ cv, onDelete }: CVCardProps) {
           throw new Error(errorData.message || "Failed to fetch quizzes");
         }
         const data = await response.json();
-        setQuizIds(data.quizIds);
+        setQuizId(data.quizId);
       } catch (err: any) {
         console.error("Error fetching quizzes:", err);
         // Silently fail to avoid disrupting CV card
@@ -79,9 +80,9 @@ function CVCard({ cv, onDelete }: CVCardProps) {
         </CardTitle>
         <div className="flex gap-1">
           {!isLoadingQuizzes &&
-            quizIds.map((quizId) => (
-              <QuizResults key={quizId} quizId={quizId} simple />
-            ))}
+            quizId && (
+              <QuizResults quizId={quizId} simple />
+            )}
         </div>
       </CardHeader>
       <CardContent className="p-4 space-y-3">
@@ -208,19 +209,13 @@ function CVCardSkeleton() {
 
 interface CVListProps {
   refreshKey?: number;
+  isAdmin?: boolean;
 }
 
-export function CVList({ refreshKey = 0 }: CVListProps) {
+export function CVList({ refreshKey = 0, isAdmin = false }: CVListProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const { cvs, status, handleDelete } = useCVs(refreshKey);
-  const [isLoading, setIsLoading] = useState(true);
+  const { cvs, loading, status, handleDelete } = useCVs(refreshKey);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
 
   const filteredCVs = cvs.filter(
     (cv) =>
@@ -256,7 +251,7 @@ export function CVList({ refreshKey = 0 }: CVListProps) {
         </Alert>
       )}
 
-      {isLoading ? (
+      {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(6)].map((_, index) => (
             <CVCardSkeleton key={index} />
@@ -266,9 +261,16 @@ export function CVList({ refreshKey = 0 }: CVListProps) {
         <div className="text-center py-8 text-gray-500">No CVs found</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCVs.map((cv) => (
-            <CVCard key={cv.realId} cv={cv} onDelete={handleDelete} />
-          ))}
+          {filteredCVs.map((cv, i) => {
+            const displayIndex = isAdmin ? cv.indexId : i + 1;
+            return (
+              <CVCard
+                key={cv.realId}
+                cv={{ ...cv, indexId: displayIndex }}
+                onDelete={handleDelete}
+              />
+            );
+          })}
         </div>
       )}
     </div>

@@ -21,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-      <body>{children}</body>
+      {children}
       <ToastContainer position="top-right" autoClose={4000} hideProgressBar={false} />
       </body>
     </html>

@@ -46,7 +46,7 @@ importers:
         version: 3.0.2
       chromadb:
         specifier: ^1.9.2
-        version: 1.10.5(@google/generative-ai@0.24.0)(openai@4.96.1(zod@3.24.3))
+        version: 1.10.5(openai@4.96.1(zod@3.24.4))
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -3740,13 +3740,12 @@ snapshots:
     dependencies:
       readdirp: 4.1.2
 
-  chromadb@1.10.5(@google/generative-ai@0.24.0)(openai@4.96.1(zod@3.24.3)):
+  chromadb@1.10.5(openai@4.96.1(zod@3.24.4)):
     dependencies:
       cliui: 8.0.1
       isomorphic-fetch: 3.0.0
     optionalDependencies:
-      '@google/generative-ai': 0.24.0
-      openai: 4.96.1(zod@3.24.3)
+      openai: 4.96.1(zod@3.24.4)
     transitivePeerDependencies:
       - encoding
 

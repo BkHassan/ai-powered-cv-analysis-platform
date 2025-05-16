@@ -1,12 +1,17 @@
-// components/generate-quiz.tsx
 "use client";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "react-toastify";
 import { BookOpen, Copy, Send } from "lucide-react";
 
@@ -16,22 +21,24 @@ interface GenerateQuizProps {
 }
 
 export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
-  const [candidateEmail, setCandidateEmail] = useState("");
   const [questionCount, setQuestionCount] = useState("5");
   const [quizData, setQuizData] = useState<{
     quizId: string;
     link: string;
-    questions: { id: string; text: string; options: string[]; correct: number }[];
+    candidateEmail: string;
+    questions: {
+      id: string;
+      text: string;
+      options: string[];
+      correct: number;
+    }[];
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   const handleGenerateQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!candidateEmail) {
-      toast.error("Please enter the candidate's email");
-      return;
-    }
+
     setIsGenerating(true);
     try {
       const token = localStorage.getItem("token");
@@ -39,18 +46,23 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
         toast.error("Please log in to generate a quiz");
         return;
       }
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/quiz/generate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fileName,
-          candidateEmail,
-          questionCount: parseInt(questionCount),
-        }),
-      });
+      const questionCountNum = parseInt(questionCount);
+      const timeLimit = questionCountNum * 60; // 60 seconds per question
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/quiz/generate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName,
+            questionCount: questionCountNum,
+            timeLimit,
+          }),
+        }
+      );
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to generate quiz");
@@ -66,25 +78,63 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
   };
 
   const handleCopyLink = () => {
-    if (quizData?.link) {
-      navigator.clipboard.writeText(quizData.link);
-      toast.success("Quiz link copied to clipboard!");
+    if (!quizData?.link) {
+      toast.error("No quiz link available");
+      return;
+    }
+    // Modern Clipboard API
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+
+        .writeText(quizData.link)
+
+        .then(() => {
+          toast.success("Quiz link copied!");
+        })
+
+        .catch(() => {
+          toast.error("Failed to copy quiz link");
+        });
+      return;
+    }
+
+    // Fallback for older browsers
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = quizData.link;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      toast.success("Quiz link copied!");
+    } catch (err) {
+      toast.error("Failed to copy quiz link. Please copy it manually.");
     }
   };
 
   const handleSendEmail = async () => {
-    if (!quizData?.link) return;
+    if (!quizData?.link || !quizData?.candidateEmail) {
+      toast.error("Quiz link or candidate email missing");
+      return;
+    }
     setIsSending(true);
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/quiz/email`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: candidateEmail, quizLink: quizData.link }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/quiz/email`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: quizData.candidateEmail,
+            quizLink: quizData.link,
+          }),
+        }
+      );
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to send email");
@@ -110,7 +160,11 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
           <form onSubmit={handleGenerateQuiz} className="space-y-4">
             <div>
               <Label htmlFor="questionCount">Number of Questions</Label>
-              <Select value={questionCount} onValueChange={setQuestionCount} disabled={isGenerating}>
+              <Select
+                value={questionCount}
+                onValueChange={setQuestionCount}
+                disabled={isGenerating}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select number of questions" />
                 </SelectTrigger>
@@ -121,46 +175,60 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="email">Candidate Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={candidateEmail}
-                onChange={(e) => setCandidateEmail(e.target.value)}
-                placeholder="candidate@example.com"
-                disabled={isGenerating}
-              />
-            </div>
             <Button type="submit" disabled={isGenerating} className="w-full">
               {isGenerating ? "Generating..." : "Generate Quiz"}
             </Button>
           </form>
         ) : (
           <div className="space-y-4">
+            <div>
+              <Label>Candidate Email</Label>
+              <p className="text-gray-600">
+                {quizData.candidateEmail || "No email available"}
+              </p>
+            </div>
             <h3 className="text-lg font-medium">Generated Questions</h3>
-            {quizData.questions.map((question) => (
-              <div key={question.id} className="border p-4 rounded-md">
-                <p className="font-medium">{question.text}</p>
-                <ul className="list-disc pl-5 mt-2">
-                  {question.options.map((option, index) => (
-                    <li key={index} className={index === question.correct ? "text-green-600" : ""}>
-                      {option}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            <div className="space-y-6">
+              {quizData.questions.map((question) => (
+                <div key={question.id} className="border p-4 rounded-md">
+                  <p className="font-medium">{question.text}</p>
+                  <RadioGroup disabled>
+                    {question.options.map((option, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <RadioGroupItem
+                          value={index.toString()}
+                          id={`${question.id}-${index}`}
+                        />
+                        <Label htmlFor={`${question.id}-${index}`}>
+                          {option}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              ))}
+            </div>
             <div className="flex space-x-2">
               <Button onClick={handleCopyLink} className="flex-1">
                 <Copy size={16} className="mr-2" />
                 Copy Link
               </Button>
-              <Button onClick={handleSendEmail} disabled={isSending} className="flex-1">
+              <Button
+                onClick={handleSendEmail}
+                disabled={isSending || !quizData.candidateEmail}
+                className="flex-1"
+              >
                 <Send size={16} className="mr-2" />
                 {isSending ? "Sending..." : "Send Email"}
               </Button>
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setQuizData(null)}
+              className="w-full mt-2"
+            >
+              Generate New Quiz
+            </Button>
           </div>
         )}
       </CardContent>

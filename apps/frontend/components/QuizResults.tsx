@@ -1,4 +1,3 @@
-// components/QuizResults.js
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,7 +5,7 @@ import { toast } from "react-toastify";
 
 interface QuizResultsProps {
   quizId: string;
-  simple?: boolean; // For CV card (percentage only)
+  simple?: boolean;
 }
 
 export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
@@ -33,19 +32,32 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
         );
         if (!response.ok) {
           const errorData = await response.json();
+          if (errorData.message === "Quiz has not been completed") {
+            setError("Quiz has not been completed");
+            return;
+          }
           throw new Error(errorData.message || "Failed to fetch results");
         }
         const data = await response.json();
         setResults(data);
       } catch (err: any) {
         setError(err.message);
-        if (!simple) toast.error(err.message);
+        if (!simple && err.message !== "Quiz has not been completed") {
+          toast.error(err.message);
+        }
       } finally {
         setLoading(false);
       }
     };
     fetchResults();
   }, [quizId, simple]);
+
+  const formatTime = (seconds: number) => {
+    if (!seconds && seconds !== 0) return "N/A";
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
+  };
 
   if (simple) {
     return results && !loading && !error ? (
@@ -58,11 +70,11 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
       {loading ? (
         <p>Loading results...</p>
       ) : error ? (
-        <p className="text-red-500">{error}</p>
+        <p className="text-gray-500">{error}</p>
       ) : results ? (
         <div>
           <p><strong>Score:</strong> {results.score}%</p>
-          <p><strong>Time Taken:</strong> {results.timeTaken} seconds</p>
+          <p><strong>Time Taken:</strong> {formatTime(results.timeTaken)}</p>
           <p><strong>Completed At:</strong> {new Date(results.completedAt).toLocaleString()}</p>
         </div>
       ) : (

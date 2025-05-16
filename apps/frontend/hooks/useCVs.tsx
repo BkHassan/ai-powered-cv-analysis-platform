@@ -21,8 +21,10 @@ interface Status {
 export function useCVs(refreshKey: number) {
   const [cvs, setCvs] = useState<CV[]>([]);
   const [status, setStatus] = useState<Status>({ type: null, message: "" });
+  const [loading, setLoading] = useState(true);
 
   const fetchCVs = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
@@ -38,6 +40,8 @@ export function useCVs(refreshKey: number) {
       setStatus({ type: null, message: "" });
     } catch (err: any) {
       setStatus({ type: "error", message: err.message || "Failed to load CVs" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,5 +68,5 @@ export function useCVs(refreshKey: number) {
     }
   };
 
-  return { cvs, status, handleDelete, fetchCVs };
+  return { cvs, loading, status, handleDelete, fetchCVs };
 }
