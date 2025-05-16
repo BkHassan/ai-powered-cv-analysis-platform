@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 
 interface QuizResultsProps {
   quizId: string;
-  simple?: boolean; // For CV card (percentage only)
+  simple?: boolean;
 }
 
 export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
@@ -52,10 +52,17 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
     fetchResults();
   }, [quizId, simple]);
 
+  const formatTime = (seconds: number) => {
+    if (!seconds && seconds !== 0) return "N/A";
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs < 10 ? "0" : ""}${secs}`;
+  };
+
   if (simple) {
     return results && !loading && !error ? (
       <span className="text-sm text-green-600">{results.score}%</span>
-    ) : null; // Don't show "Not completed" in CV cards
+    ) : null;
   }
 
   return (
@@ -67,7 +74,7 @@ export function QuizResults({ quizId, simple = false }: QuizResultsProps) {
       ) : results ? (
         <div>
           <p><strong>Score:</strong> {results.score}%</p>
-          <p><strong>Time Taken:</strong> {results.timeTaken} seconds</p>
+          <p><strong>Time Taken:</strong> {formatTime(results.timeTaken)}</p>
           <p><strong>Completed At:</strong> {new Date(results.completedAt).toLocaleString()}</p>
         </div>
       ) : (

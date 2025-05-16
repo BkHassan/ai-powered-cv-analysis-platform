@@ -23,7 +23,12 @@ export class QuizController {
   @UseGuards(JwtAuthGuard)
   async generateQuiz(
     @Body()
-    body: { fileName: string; candidateEmail?: string; questionCount?: number },
+    body: {
+      fileName: string;
+      candidateEmail?: string;
+      questionCount?: number;
+      timeLimit?: number;
+    },
     @Request() req: any,
   ) {
     this.logger.log(`Generate quiz for ${body.fileName} by ${req.user.email}`);
@@ -38,12 +43,17 @@ export class QuizController {
       this.logger.warn(`Invalid questionCount: ${body.questionCount}`);
       throw new BadRequestException('questionCount must be between 1 and 20');
     }
+    if (body.timeLimit && body.timeLimit < 60) {
+      this.logger.warn(`Invalid timeLimit: ${body.timeLimit}`);
+      throw new BadRequestException('timeLimit must be at least 60 seconds');
+    }
     return this.quizService.generateQuiz(
       body.fileName,
       req.user.email,
       req.user.role,
       body.candidateEmail,
       body.questionCount || 5,
+      body.timeLimit,
     );
   }
 
@@ -132,7 +142,7 @@ export class QuizController {
     @Param('fileName') fileName: string,
     @Request() req: any,
   ) {
-    this.logger.log(`Get qlast uizzes for CV ${fileName} by ${req.user.email}`);
+    this.logger.log(`Get quizzes for CV ${fileName} by ${req.user.email}`);
     return this.quizService.getQuizzesForCv(
       fileName,
       req.user.email,

@@ -4,7 +4,6 @@ import { useState, useEffect, use } from "react";
 import { GenerateQuiz } from "@/components/generate-quiz";
 import { Card } from "@/components/ui/card";
 import { toast } from "react-toastify";
-import { QuizResults } from "@/components/QuizResults";
 
 export default function QuizGenerationPage({
   params,
@@ -12,9 +11,8 @@ export default function QuizGenerationPage({
   params: Promise<{ fileName: string }>;
 }) {
   const { fileName } = use(params);
-  const [quizId, setQuizId] = useState<string | undefined>(undefined);
   const [attempts, setAttempts] = useState<
-    { attemptNumber: number; score?: number; completedAt?: string }[]
+    { attemptNumber: number; score?: number; completedAt?: string; timeTaken?: number }[]
   >([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,24 +25,6 @@ export default function QuizGenerationPage({
           return;
         }
 
-        // Fetch latest quiz
-        const quizResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(fileName)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            cache: "no-store",
-          }
-        );
-        if (!quizResponse.ok) {
-          const errorData = await quizResponse.json();
-          throw new Error(errorData.message || "Failed to fetch quiz");
-        }
-        const quizData = await quizResponse.json();
-        setQuizId(quizData.quizId);
-
-        // Fetch attempts
         const attemptsResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/quiz/cv/${encodeURIComponent(fileName)}/attempts`,
           {
@@ -59,7 +39,7 @@ export default function QuizGenerationPage({
           throw new Error(errorData.message || "Failed to fetch quiz attempts");
         }
         const attemptsData = await attemptsResponse.json();
-        setAttempts(attemptsData);
+        setAttempts(attemptsData.slice(-3)); // Show only the last 3 attempts
       } catch (err: any) {
         toast.error(err.message || "Failed to load quiz data");
       } finally {
@@ -68,6 +48,24 @@ export default function QuizGenerationPage({
     };
     fetchData();
   }, [fileName]);
+
+  const formatTime = (seconds: number | undefined) => {
+    if (!seconds && seconds !== 0) return 'N/A';
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return 'N/A';
+    return new Intl.DateTimeFormat("en-US", {
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(dateStr));
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -84,19 +82,13 @@ export default function QuizGenerationPage({
                   {attempts.map((attempt) => (
                     <li key={attempt.attemptNumber} className="text-sm text-gray-600">
                       Attempt {attempt.attemptNumber} –{' '}
-                      {attempt.completedAt ? `${attempt.score}%` : 'In Progress'}
+                      {attempt.completedAt
+                        ? `${attempt.score}% (Time: ${formatTime(attempt.timeTaken)}, Date: ${formatDate(attempt.completedAt)})`
+                        : 'In Progress'}
                     </li>
                   ))}
                 </ul>
               </div>
-            )}
-            {quizId ? (
-              <div className="mt-4">
-                <h3 className="text-lg font-medium mb-4">Latest Quiz Result</h3>
-                <QuizResults quizId={quizId} simple={false} />
-              </div>
-            ) : (
-              <p className="text-gray-500">No quiz generated for this CV yet.</p>
             )}
           </div>
         )}

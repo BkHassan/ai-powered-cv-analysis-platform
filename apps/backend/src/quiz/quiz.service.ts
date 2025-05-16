@@ -241,6 +241,7 @@ export class QuizService {
     requesterRole: string,
     candidateEmail?: string,
     questionCount: number = 5,
+    timeLimit?: number,
   ): Promise<{
     quizId: string;
     link: string;
@@ -376,21 +377,7 @@ export class QuizService {
         throw new BadRequestException('Invalid CV ID or file name');
       }
 
-      // Check for existing quiz with explicit $and operator
-      this.logger.debug(
-        `Querying quizzes with cvId: ${cvId}, fileName: ${fileName}`,
-      );
-      const existingQuizzes = await this.quizCollection.get({
-        where: {
-          $and: [{ cvId: cvId }, { fileName: fileName }],
-        },
-      });
-
-      let quizId = existingQuizzes.ids[0];
-      const isNewQuiz = !quizId;
-      if (isNewQuiz) {
-        quizId = uuidv4();
-      }
+      const quizId = uuidv4();
 
       const secureToken = crypto.randomBytes(16).toString('hex');
       const appUrl =
@@ -416,37 +403,22 @@ export class QuizService {
         createdBy: requesterEmail,
         candidateEmail: extractedEmail,
         attemptNumber,
+        timeLimit: timeLimit || questionCount * 45, // Default to 60s per question
       });
 
-      if (isNewQuiz) {
-        await this.quizCollection.add({
-          ids: [quizId],
-          documents: [quizDocument],
-          metadatas: [
-            {
-              cvId,
-              fileName,
-              createdBy: requesterEmail,
-              candidateEmail: extractedEmail,
-              attemptNumber,
-            },
-          ],
-        });
-      } else {
-        await this.quizCollection.upsert({
-          ids: [quizId],
-          documents: [quizDocument],
-          metadatas: [
-            {
-              cvId,
-              fileName,
-              createdBy: requesterEmail,
-              candidateEmail: extractedEmail,
-              attemptNumber,
-            },
-          ],
-        });
-      }
+      await this.quizCollection.add({
+        ids: [quizId],
+        documents: [quizDocument],
+        metadatas: [
+          {
+            cvId,
+            fileName,
+            createdBy: requesterEmail,
+            candidateEmail: extractedEmail,
+            attemptNumber,
+          },
+        ],
+      });
 
       this.logger.log(
         `Stored quiz ${quizId} for CV ${cvId}, attempt ${attemptNumber}`,
@@ -479,6 +451,7 @@ export class QuizService {
       correct: number;
     }[];
     completedAt?: string;
+    timeLimit?: number;
   }> {
     try {
       this.logger.log(`Retrieving quiz for quizId: ${quizId}`);
@@ -497,8 +470,9 @@ export class QuizService {
         cvId: quizDoc.cvId,
         fileName: quizDoc.fileName,
         questions: quizDoc.questions,
-        completedAt: quizDoc.completedAt,
+        completedAt: quizDoc.completedAt || undefined,
         candidateEmail: quizDoc.candidateEmail || '',
+        timeLimit: quizDoc.timeLimit,
       };
     } catch (error) {
       this.logger.error('Quiz retrieval failed', error.stack, error.message);
@@ -511,7 +485,13 @@ export class QuizService {
     requesterEmail: string,
     requesterRole: string,
   ): Promise<
-    { attemptNumber: number; score?: number; completedAt?: string }[]
+    {
+      attemptNumber: number;
+      score?: number;
+      completedAt?: string;
+      timeTaken?: number;
+      timeLimit?: number;
+    }[]
   > {
     try {
       this.logger.log(
@@ -551,6 +531,8 @@ export class QuizService {
           attemptNumber: attempt.attemptNumber,
           score: attempt.score,
           completedAt: attempt.completedAt,
+          timeTaken: attempt.timeTaken,
+          timeLimit: attempt.timeLimit,
         }));
 
       this.logger.log(
@@ -571,7 +553,7 @@ export class QuizService {
     fileName: string,
     requesterEmail: string,
     requesterRole: string,
-  ): Promise<{ quizIds: string[] }> {
+  ): Promise<{ quizId: string }> {
     try {
       this.logger.log(
         `Retrieving quizzes for CV ${fileName} by ${requesterEmail}`,
@@ -603,9 +585,19 @@ export class QuizService {
         where: { fileName },
       });
 
-      const quizIds = result.ids;
-      this.logger.log(`Found ${quizIds.length} quizzes for CV ${fileName}`);
-      return { quizIds };
+      const quizzes = result.documents
+        .map((doc) => JSON.parse(doc!))
+        .filter((quiz) => quiz.completedAt) // Only completed quizzes
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+      const latestQuizId = quizzes.length > 0 ? quizzes[0].quizId : '';
+      this.logger.log(
+        `Found ${quizzes.length} completed quizzes for CV ${fileName}`,
+      );
+
+      return { quizId: latestQuizId };
     } catch (error) {
       this.logger.error('Quiz retrieval failed', error.stack, error.message);
       throw error;
@@ -670,7 +662,7 @@ export class QuizService {
 
       if (result.ids.length === 0 || !result.documents[0]) {
         this.logger.warn(`Quiz ${quizId} not found`);
-        throw new NotFoundException('Quiz not found');
+        return { fileName: '', score: 0, timeTaken: 0, completedAt: '' };
       }
 
       const quizDoc = JSON.parse(result.documents[0]);
@@ -683,7 +675,7 @@ export class QuizService {
 
       if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
         this.logger.warn(`CV ${cvId} not found`);
-        throw new NotFoundException('CV not found');
+        return { fileName: quizDoc.fileName, score: 0, timeTaken: 0, completedAt: '' };
       }
 
       if (
@@ -700,7 +692,7 @@ export class QuizService {
 
       if (!quizDoc.completedAt) {
         this.logger.warn(`Quiz ${quizId} has not been completed`);
-        throw new BadRequestException('Quiz has not been completed');
+        return { fileName: quizDoc.fileName, score: 0, timeTaken: 0, completedAt: '' };
       }
 
       return {
@@ -747,6 +739,13 @@ export class QuizService {
         throw new BadRequestException('Quiz already completed');
       }
 
+      if (quizDoc.timeLimit && timeTaken > quizDoc.timeLimit) {
+        this.logger.warn(
+          `Quiz ${quizId} submission time exceeded: ${timeTaken}s > ${quizDoc.timeLimit}s`,
+        );
+        throw new BadRequestException('Submission time limit exceeded');
+      }
+
       const questions = quizDoc.questions;
 
       let correctAnswers = 0;
@@ -781,6 +780,7 @@ export class QuizService {
         timeTaken,
         completedAt: quizDoc.completedAt,
         createdAt: quizDoc.createdAt,
+        timeLimit: quizDoc.timeLimit,
       });
 
       await this.quizAttemptsCollection.add({

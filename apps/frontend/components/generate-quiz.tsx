@@ -46,6 +46,8 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
         toast.error("Please log in to generate a quiz");
         return;
       }
+      const questionCountNum = parseInt(questionCount);
+      const timeLimit = questionCountNum * 60; // 60 seconds per question
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/quiz/generate`,
         {
@@ -56,7 +58,8 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
           },
           body: JSON.stringify({
             fileName,
-            questionCount: parseInt(questionCount),
+            questionCount: questionCountNum,
+            timeLimit,
           }),
         }
       );
@@ -75,11 +78,38 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
   };
 
   const handleCopyLink = () => {
-    if (quizData?.link) {
-      navigator.clipboard.writeText(quizData.link);
-      toast.success("Quiz link copied!");
-    } else {
+    if (!quizData?.link) {
       toast.error("No quiz link available");
+      return;
+    }
+    // Modern Clipboard API
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+
+        .writeText(quizData.link)
+
+        .then(() => {
+          toast.success("Quiz link copied!");
+        })
+
+        .catch(() => {
+          toast.error("Failed to copy quiz link");
+        });
+      return;
+    }
+
+    // Fallback for older browsers
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = quizData.link;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      toast.success("Quiz link copied!");
+    } catch (err) {
+      toast.error("Failed to copy quiz link. Please copy it manually.");
     }
   };
 
@@ -153,7 +183,9 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
           <div className="space-y-4">
             <div>
               <Label>Candidate Email</Label>
-              <p className="text-gray-600">{quizData.candidateEmail || "No email available"}</p>
+              <p className="text-gray-600">
+                {quizData.candidateEmail || "No email available"}
+              </p>
             </div>
             <h3 className="text-lg font-medium">Generated Questions</h3>
             <div className="space-y-6">

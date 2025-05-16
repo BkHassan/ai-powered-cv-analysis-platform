@@ -36,7 +36,7 @@ interface CVCardProps {
 }
 
 function CVCard({ cv, onDelete }: CVCardProps) {
-  const [quizIds, setQuizIds] = useState<string | undefined>(undefined);
+  const [quizId, setQuizId] = useState<string | undefined>(undefined);
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ function CVCard({ cv, onDelete }: CVCardProps) {
           throw new Error(errorData.message || "Failed to fetch quizzes");
         }
         const data = await response.json();
-        setQuizIds(data.quizIds);
+        setQuizId(data.quizId);
       } catch (err: any) {
         console.error("Error fetching quizzes:", err);
         // Silently fail to avoid disrupting CV card
@@ -80,8 +80,8 @@ function CVCard({ cv, onDelete }: CVCardProps) {
         </CardTitle>
         <div className="flex gap-1">
           {!isLoadingQuizzes &&
-            quizIds && (
-              <QuizResults quizId={quizIds} simple />
+            quizId && (
+              <QuizResults quizId={quizId} simple />
             )}
         </div>
       </CardHeader>

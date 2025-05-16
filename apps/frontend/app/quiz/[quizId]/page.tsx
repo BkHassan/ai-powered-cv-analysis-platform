@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, useMemo } from "react";
+import { useState, useEffect, use, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +32,6 @@ export default function QuizPage({
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
-  // Add localStorage keys
   const STORAGE_KEYS = useMemo(
     () => ({
       RULES_ACCEPTED: `quiz_${quizId}_rules_accepted`,
@@ -42,9 +41,14 @@ export default function QuizPage({
       TIME_LEFT: `quiz_${quizId}_time_left`,
       QUESTIONS: `quiz_${quizId}_questions`,
       SUBMITTED: `quiz_${quizId}_submitted`,
+      QUIZ_TOKEN: `quiz_${quizId}_token`,
+      TAB_LOCK: `quiz_${quizId}_tab_lock`,
+      TAB_ID: `quiz_${quizId}_tab_id`,
     }),
     [quizId]
   );
+
+  const tabId = useMemo(() => Math.random().toString(36).substring(2), []);
 
   const [questions, setQuestions] = useState<
     { id: string; text: string; options: string[]; correct: number }[]
@@ -60,7 +64,8 @@ export default function QuizPage({
   const [rulesAccepted, setRulesAccepted] = useState(false);
   const [quizStarted, setQuizStarted] = useState(false);
   const [lastCopyToast, setLastCopyToast] = useState<number>(0);
-  const COPY_TOAST_COOLDOWN = 10000; // 10 seconds in milliseconds
+  const [isRulesTooltipOpen, setIsRulesTooltipOpen] = useState(false);
+  const COPY_TOAST_COOLDOWN = 10000;
   const TOAST_IDS = {
     COPY: "copy-toast",
     SHUFFLE: "shuffle-toast",
@@ -68,7 +73,76 @@ export default function QuizPage({
     ANSWER_ALL: "answer-all-toast",
   };
 
-  // Load saved state from localStorage
+  useEffect(() => {
+    const allKeys = Object.keys(localStorage);
+    allKeys.forEach((key) => {
+      if (key.startsWith("quiz_") && !key.startsWith(`quiz_${quizId}_`)) {
+        localStorage.removeItem(key);
+      }
+    });
+  }, [quizId]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      localStorage.removeItem(STORAGE_KEYS.TAB_LOCK);
+      localStorage.removeItem(STORAGE_KEYS.TAB_ID);
+    };
+
+    const checkTabLock = () => {
+      const existingLock = localStorage.getItem(STORAGE_KEYS.TAB_LOCK);
+      const existingTabId = localStorage.getItem(STORAGE_KEYS.TAB_ID);
+      const existingToken = localStorage.getItem(STORAGE_KEYS.QUIZ_TOKEN);
+
+      if (existingLock && existingToken !== token) {
+        localStorage.removeItem(STORAGE_KEYS.TAB_LOCK);
+        localStorage.removeItem(STORAGE_KEYS.TAB_ID);
+      } else if (existingLock && existingToken === token) {
+        if (existingTabId === tabId) {
+          return;
+        }
+        const lastActivity = localStorage.getItem(
+          `${STORAGE_KEYS.TAB_ID}_last_activity`
+        );
+        if (lastActivity && Date.now() - parseInt(lastActivity) < 5000) {
+          setError(
+            "This quiz is already open in another tab. Please use that tab to continue."
+          );
+          return;
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.TAB_LOCK);
+          localStorage.removeItem(STORAGE_KEYS.TAB_ID);
+        }
+      }
+
+      localStorage.setItem(STORAGE_KEYS.TAB_LOCK, "true");
+      localStorage.setItem(STORAGE_KEYS.TAB_ID, tabId);
+      localStorage.setItem(STORAGE_KEYS.QUIZ_TOKEN, token || "");
+    };
+
+    checkTabLock();
+    const activityInterval = setInterval(() => {
+      localStorage.setItem(
+        `${STORAGE_KEYS.TAB_ID}_last_activity`,
+        Date.now().toString()
+      );
+    }, 1000);
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("storage", (e) => {
+      if (e.key === STORAGE_KEYS.TAB_LOCK) {
+        checkTabLock();
+      }
+    });
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      clearInterval(activityInterval);
+      localStorage.removeItem(STORAGE_KEYS.TAB_LOCK);
+      localStorage.removeItem(STORAGE_KEYS.TAB_ID);
+      localStorage.removeItem(`${STORAGE_KEYS.TAB_ID}_last_activity`);
+    };
+  }, [STORAGE_KEYS, token, tabId]);
+
   useEffect(() => {
     const savedRulesAccepted = localStorage.getItem(
       STORAGE_KEYS.RULES_ACCEPTED
@@ -79,6 +153,14 @@ export default function QuizPage({
     const savedTimeLeft = localStorage.getItem(STORAGE_KEYS.TIME_LEFT);
     const savedQuestions = localStorage.getItem(STORAGE_KEYS.QUESTIONS);
     const savedSubmitted = localStorage.getItem(STORAGE_KEYS.SUBMITTED);
+    const savedToken = localStorage.getItem(STORAGE_KEYS.QUIZ_TOKEN);
+
+    if (savedToken !== token) {
+      Object.values(STORAGE_KEYS).forEach((key) =>
+        localStorage.removeItem(key)
+      );
+      return;
+    }
 
     if (savedRulesAccepted === "true") {
       setRulesAccepted(true);
@@ -101,10 +183,11 @@ export default function QuizPage({
     }
     if (savedSubmitted === "true") {
       setSubmitted(true);
+    } else {
+      setSubmitted(false);
     }
-  }, [STORAGE_KEYS]);
+  }, [STORAGE_KEYS, token]);
 
-  // Save state to localStorage
   useEffect(() => {
     if (rulesAccepted) {
       localStorage.setItem(STORAGE_KEYS.RULES_ACCEPTED, "true");
@@ -147,7 +230,6 @@ export default function QuizPage({
     }
   }, [STORAGE_KEYS, submitted]);
 
-  // Function to shuffle questions
   const shuffleQuestions = () => {
     setQuestions((prevQuestions) => {
       const shuffled = [...prevQuestions];
@@ -155,6 +237,7 @@ export default function QuizPage({
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
+      localStorage.setItem(STORAGE_KEYS.QUESTIONS, JSON.stringify(shuffled));
       return shuffled;
     });
   };
@@ -175,6 +258,12 @@ export default function QuizPage({
         return;
       }
       try {
+        const savedQuestions = localStorage.getItem(STORAGE_KEYS.QUESTIONS);
+        if (savedQuestions && quizStarted) {
+          setQuestions(JSON.parse(savedQuestions));
+          setLoading(false);
+          return;
+        }
         const response = await fetch(
           `${
             process.env.NEXT_PUBLIC_API_URL
@@ -188,6 +277,7 @@ export default function QuizPage({
         const data = await response.json();
         setQuestions(data.questions);
         setTimeLimit(data.timeLimit || data.questions.length * 60);
+        setSubmitted(!!data.completedAt);
         setLoading(false);
       } catch (err: any) {
         console.error("Error fetching quiz:", err);
@@ -197,33 +287,30 @@ export default function QuizPage({
       }
     };
     fetchQuiz();
-  }, [quizId, token]);
+  }, [quizId, token, STORAGE_KEYS, quizStarted]);
 
-  // Function to show toast with cooldown
-  const showToastWithCooldown = (
-    message: string,
-    type: "error" | "warning" | "info",
-    id: string,
-    cooldown: number = 0
-  ) => {
-    const now = Date.now();
-    if (cooldown > 0 && now - lastCopyToast < cooldown) {
-      return;
-    }
-    if (!toast.isActive(id)) {
-      toast[type](message, {
-        position: "top-center",
-        autoClose: 2000,
-        hideProgressBar: true,
-        toastId: id,
-      });
-      if (cooldown > 0) {
-        setLastCopyToast(now);
+  const showToastWithCooldown = useCallback(
+    (
+      message: string,
+      type: "error" | "warning" | "info",
+      id: string,
+      cooldown: number = 0
+    ) => {
+      if (!toast.isActive(id)) {
+        toast[type](message, {
+          position: "top-center",
+          autoClose: 2000,
+          hideProgressBar: true,
+          toastId: id,
+        });
+        if (cooldown > 0) {
+          setTimeout(() => setLastCopyToast(Date.now()), 0);
+        }
       }
-    }
-  };
+    },
+    []
+  );
 
-  // Timer logic
   useEffect(() => {
     if (timeLeft === null || submitted || !quizStarted) return;
 
@@ -231,14 +318,6 @@ export default function QuizPage({
       setTimeLeft((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
-          if (!submitted) {
-            handleSubmit();
-            showToastWithCooldown(
-              "Time's up! Quiz submitted automatically.",
-              "error",
-              TOAST_IDS.TIME_UP
-            );
-          }
           return 0;
         }
         return prev - 1;
@@ -248,9 +327,8 @@ export default function QuizPage({
     return () => clearInterval(interval);
   }, [timeLeft, submitted, quizStarted]);
 
-  // Prevent copying and screenshots
   useEffect(() => {
-    if (submitted || !quizStarted) return; // Don't apply restrictions before quiz starts
+    if (submitted || !quizStarted || timeLeft === null || timeLeft <= 0) return;
 
     const disableCopy = (e: ClipboardEvent) => {
       e.preventDefault();
@@ -267,7 +345,6 @@ export default function QuizPage({
     };
 
     const disableKeydown = (e: KeyboardEvent) => {
-      // Only prevent copy shortcuts
       if ((e.ctrlKey && e.key === "c") || (e.metaKey && e.key === "c")) {
         e.preventDefault();
         showToastWithCooldown(
@@ -279,12 +356,10 @@ export default function QuizPage({
       }
     };
 
-    // Prevent drag and drop
     const disableDrag = (e: DragEvent) => {
       e.preventDefault();
     };
 
-    // Prevent selection
     const disableSelect = (e: Event) => {
       if (
         e.target instanceof HTMLElement &&
@@ -294,14 +369,30 @@ export default function QuizPage({
       }
     };
 
-    // Add event listeners
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        const handleVisibilityReturn = () => {
+          if (!document.hidden && timeLeft > 0 && !submitted) {
+            shuffleQuestions();
+            showToastWithCooldown(
+              "Questions have been shuffled!",
+              "warning",
+              TOAST_IDS.SHUFFLE
+            );
+          }
+          document.removeEventListener("visibilitychange", handleVisibilityReturn);
+        };
+        document.addEventListener("visibilitychange", handleVisibilityReturn);
+      }
+    };
+
     document.addEventListener("copy", disableCopy);
     document.addEventListener("contextmenu", disableContextMenu);
     document.addEventListener("keydown", disableKeydown);
     document.addEventListener("dragstart", disableDrag);
     document.addEventListener("selectstart", disableSelect);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Add CSS to prevent text selection
     const style = document.createElement("style");
     style.textContent = `
       .quiz-content {
@@ -319,42 +410,16 @@ export default function QuizPage({
     `;
     document.head.appendChild(style);
 
-    // Additional protection against switching tabs
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Shuffle questions when user returns to the tab
-        const handleVisibilityReturn = () => {
-          if (!document.hidden) {
-            shuffleQuestions();
-            showToastWithCooldown(
-              "Questions have been shuffled!",
-              "warning",
-              TOAST_IDS.SHUFFLE
-            );
-            document.removeEventListener(
-              "visibilitychange",
-              handleVisibilityReturn
-            );
-          }
-        };
-        document.addEventListener("visibilitychange", handleVisibilityReturn);
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
-      // Clean up event listeners
       document.removeEventListener("copy", disableCopy);
       document.removeEventListener("contextmenu", disableContextMenu);
       document.removeEventListener("keydown", disableKeydown);
       document.removeEventListener("dragstart", disableDrag);
       document.removeEventListener("selectstart", disableSelect);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      // Remove style
       document.head.removeChild(style);
     };
-  }, [submitted, quizStarted]);
+  }, [submitted, quizStarted, timeLeft, showToastWithCooldown, STORAGE_KEYS, TOAST_IDS]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -379,12 +444,11 @@ export default function QuizPage({
       showToastWithCooldown("Invalid quiz link", "error", "invalid-link");
       return;
     }
-    if (timeLeft === 0) {
-      setSubmitted(true);
+    if (submitted) {
       showToastWithCooldown(
-        "Submission time limit exceeded",
+        "Quiz has already been submitted",
         "error",
-        "time-limit"
+        "already-submitted"
       );
       return;
     }
@@ -406,7 +470,6 @@ export default function QuizPage({
         throw new Error(errorData.message || "Failed to submit quiz");
       }
       setSubmitted(true);
-      // Clear localStorage after successful submission
       Object.values(STORAGE_KEYS).forEach((key) =>
         localStorage.removeItem(key)
       );
@@ -436,7 +499,7 @@ export default function QuizPage({
               <CardTitle>Technical Quiz</CardTitle>
               {!submitted && (
                 <TooltipProvider>
-                  <Tooltip>
+                  <Tooltip open={isRulesTooltipOpen} onOpenChange={setIsRulesTooltipOpen}>
                     <TooltipTrigger>
                       <Info className="h-5 w-5 text-gray-500" />
                     </TooltipTrigger>
@@ -446,7 +509,7 @@ export default function QuizPage({
                         <li>Do not switch tabs during the test.</li>
                         <li>Do not take screenshots or copy text.</li>
                         <li>
-                          The quiz is timed and auto-submits when time runs out.
+                          The quiz is timed and must be submitted before time runs out.
                         </li>
                         <li>
                           Repeated tab switching will shuffle or end the test.
@@ -481,6 +544,7 @@ export default function QuizPage({
                       onValueChange={(value) =>
                         handleAnswerChange(question.id, value)
                       }
+                      disabled={timeLeft === 0}
                     >
                       {question.options.map((option, index) => (
                         <div
@@ -501,7 +565,7 @@ export default function QuizPage({
                 ))}
                 <Button
                   onClick={handleSubmit}
-                  disabled={loading || timeLeft === 0}
+                  disabled={loading || timeLeft === 0 || submitted}
                 >
                   Submit Quiz
                 </Button>
@@ -513,8 +577,8 @@ export default function QuizPage({
 
       <Dialog
         open={showRules && !quizStarted}
-        onOpenChange={() => {}} // Prevent closing by clicking outside
-        modal={true} // Ensure modal behavior
+        onOpenChange={() => {}}
+        modal={true}
       >
         <DialogContent className="backdrop-blur-sm bg-white/95">
           <DialogHeader>
@@ -524,7 +588,7 @@ export default function QuizPage({
             <ul className="list-disc pl-4 space-y-2">
               <li>Do not switch tabs during the test.</li>
               <li>Do not take screenshots or copy text.</li>
-              <li>The quiz is timed and auto-submits when time runs out.</li>
+              <li>The quiz is timed and must be submitted before time runs out.</li>
               <li>Repeated tab switching will shuffle or end the test.</li>
             </ul>
             <div className="flex items-center space-x-2">
