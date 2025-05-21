@@ -403,7 +403,7 @@ export class QuizService {
         createdBy: requesterEmail,
         candidateEmail: extractedEmail,
         attemptNumber,
-        timeLimit: timeLimit || questionCount * 45, // Default to 60s per question
+        timeLimit: timeLimit || questionCount * 30, // Default to 60s per question
       });
 
       await this.quizCollection.add({
@@ -675,7 +675,12 @@ export class QuizService {
 
       if (cvResult.ids.length === 0 || !cvResult.documents[0]) {
         this.logger.warn(`CV ${cvId} not found`);
-        return { fileName: quizDoc.fileName, score: 0, timeTaken: 0, completedAt: '' };
+        return {
+          fileName: quizDoc.fileName,
+          score: 0,
+          timeTaken: 0,
+          completedAt: '',
+        };
       }
 
       if (
@@ -692,7 +697,12 @@ export class QuizService {
 
       if (!quizDoc.completedAt) {
         this.logger.warn(`Quiz ${quizId} has not been completed`);
-        return { fileName: quizDoc.fileName, score: 0, timeTaken: 0, completedAt: '' };
+        return {
+          fileName: quizDoc.fileName,
+          score: 0,
+          timeTaken: 0,
+          completedAt: '',
+        };
       }
 
       return {
@@ -716,6 +726,7 @@ export class QuizService {
     answers: { [questionId: string]: number },
     timeTaken: number,
     token: string,
+    isAutoSubmit: boolean = false,
   ): Promise<void> {
     try {
       this.logger.log(`Submitting answers for quizId: ${quizId}`);
@@ -739,17 +750,19 @@ export class QuizService {
         throw new BadRequestException('Quiz already completed');
       }
 
-      if (quizDoc.timeLimit && timeTaken > quizDoc.timeLimit) {
+      // Modified: Add 5-second grace period for auto-submissions
+      const gracePeriod = isAutoSubmit ? 5 : 0;
+      if (quizDoc.timeLimit && timeTaken > quizDoc.timeLimit + gracePeriod) {
         this.logger.warn(
-          `Quiz ${quizId} submission time exceeded: ${timeTaken}s > ${quizDoc.timeLimit}s`,
+          `Quiz ${quizId} submission time exceeded: ${timeTaken}s > ${
+            quizDoc.timeLimit + gracePeriod
+          }s`,
         );
         throw new BadRequestException('Submission time limit exceeded');
       }
 
       const questions = quizDoc.questions;
-
       let correctAnswers = 0;
-
       for (const question of questions) {
         const userAnswer = answers[question.id];
         if (userAnswer === question.correct) {

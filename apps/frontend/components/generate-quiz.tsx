@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -13,15 +13,34 @@ import {
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "react-toastify";
-import { BookOpen, Copy, Send } from "lucide-react";
+import {
+  BookOpen,
+  Copy,
+  Send,
+  Award,
+  ChevronUp,
+  ChevronDown,
+  RefreshCw,
+  User,
+} from "lucide-react";
 
 interface GenerateQuizProps {
   fileName: string;
   cvId: string;
+  onGquizGenerated: (data: any) => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }
 
-export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
+export function GenerateQuiz({
+  fileName,
+  cvId,
+  onGquizGenerated,
+  isExpanded,
+  onToggleExpand,
+}: GenerateQuizProps) {
   const [questionCount, setQuestionCount] = useState("5");
+  const [cvName, setCvName] = useState("");
   const [quizData, setQuizData] = useState<{
     quizId: string;
     link: string;
@@ -36,6 +55,33 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  useEffect(() => {
+    const fetchCVName = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch CVs");
+        }
+
+        const cvs = await response.json();
+        const cv = cvs.find((cv: any) => cv.fileName === fileName);
+        if (cv) {
+          setCvName(cv.name);
+        }
+      } catch (error) {
+        console.error("Error fetching CV name:", error);
+      }
+    };
+
+    fetchCVName();
+  }, [fileName]);
+
   const handleGenerateQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -47,7 +93,7 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
         return;
       }
       const questionCountNum = parseInt(questionCount);
-      const timeLimit = questionCountNum * 60; // 60 seconds per question
+      const timeLimit = questionCountNum * 30; // 30 seconds per question
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/quiz/generate`,
         {
@@ -69,6 +115,7 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
       }
       const data = await response.json();
       setQuizData(data);
+      onGquizGenerated(data);
       toast.success("Quiz generated successfully!");
     } catch (error: any) {
       toast.error(error.message || "Failed to generate quiz");
@@ -150,42 +197,100 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
   return (
     <Card className="w-full shadow-lg">
       <CardHeader>
-        <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <BookOpen size={20} />
-          Generate Quiz
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <BookOpen size={20} />
+            Generate Quiz
+          </CardTitle>
+          <CardTitle className="text-gray-700 text-lg flex items-center gap-2">
+            <User size={20} />
+            {cvName}
+          </CardTitle>
+        </div>
       </CardHeader>
       <CardContent>
         {!quizData ? (
-          <form onSubmit={handleGenerateQuiz} className="space-y-4">
-            <div>
-              <Label htmlFor="questionCount">Number of Questions</Label>
-              <Select
-                value={questionCount}
-                onValueChange={setQuestionCount}
-                disabled={isGenerating}
+          <>
+            <form onSubmit={handleGenerateQuiz} className="space-y-4">
+              <div>
+                <Label htmlFor="questionCount">Number of Questions</Label>
+                <Select
+                  value={questionCount}
+                  onValueChange={setQuestionCount}
+                  disabled={isGenerating}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select number of questions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 Questions</SelectItem>
+                    <SelectItem value="8">8 Questions</SelectItem>
+                    <SelectItem value="10">10 Questions</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" disabled={isGenerating} className="w-full">
+                {isGenerating ? "Generating..." : "Generate Quiz"}
+              </Button>
+            </form>
+            <div className="pt-2 mt-4 border-t">
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full flex items-center justify-between text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                onClick={onToggleExpand}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select number of questions" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="5">5 Questions</SelectItem>
-                  <SelectItem value="8">8 Questions</SelectItem>
-                  <SelectItem value="10">10 Questions</SelectItem>
-                </SelectContent>
-              </Select>
+                <span className="flex items-center">
+                  <Award className="h-4 w-4 mr-2 text-gray-400" />
+                  Quiz Attempts
+                </span>
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                )}
+              </Button>
             </div>
-            <Button type="submit" disabled={isGenerating} className="w-full">
-              {isGenerating ? "Generating..." : "Generate Quiz"}
-            </Button>
-          </form>
+          </>
         ) : (
           <div className="space-y-4">
-            <div>
-              <Label>Candidate Email</Label>
-              <p className="text-gray-600">
-                {quizData.candidateEmail || "No email available"}
-              </p>
+            <div className="flex space-x-2 mb-6">
+              <Button onClick={handleCopyLink} size="sm" className="flex-1">
+                <Copy size={14} className="mr-2" />
+                Copy Link
+              </Button>
+              <Button
+                onClick={handleSendEmail}
+                disabled={isSending || !quizData.candidateEmail}
+                size="sm"
+                className="flex-1"
+              >
+                <Send size={14} className="mr-2" />
+                {isSending ? "Sending..." : "Send Email"}
+              </Button>
+              <Button
+                onClick={() => setQuizData(null)}
+                size="sm"
+                className="flex-1"
+              >
+                <RefreshCw size={14} className="mr-2" />
+                Generate New Quiz
+              </Button>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <Label>Candidate Email</Label>
+                <p className="text-gray-600">
+                  {quizData.candidateEmail || "No email available"}
+                </p>
+              </div>
+              <div className="flex-1">
+                <Label>Candidate Name</Label>
+                <p className="text-gray-600 flex items-center gap-2 pl-2">
+                  {cvName}
+                </p>
+              </div>
             </div>
             <h3 className="text-lg font-medium">Generated Questions</h3>
             <div className="space-y-6">
@@ -208,27 +313,6 @@ export function GenerateQuiz({ fileName, cvId }: GenerateQuizProps) {
                 </div>
               ))}
             </div>
-            <div className="flex space-x-2">
-              <Button onClick={handleCopyLink} className="flex-1">
-                <Copy size={16} className="mr-2" />
-                Copy Link
-              </Button>
-              <Button
-                onClick={handleSendEmail}
-                disabled={isSending || !quizData.candidateEmail}
-                className="flex-1"
-              >
-                <Send size={16} className="mr-2" />
-                {isSending ? "Sending..." : "Send Email"}
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setQuizData(null)}
-              className="w-full mt-2"
-            >
-              Generate New Quiz
-            </Button>
           </div>
         )}
       </CardContent>

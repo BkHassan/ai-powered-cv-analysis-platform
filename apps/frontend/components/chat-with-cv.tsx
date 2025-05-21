@@ -1,4 +1,3 @@
-// components/ChatWithCV.tsx
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -17,6 +16,8 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 interface CV {
   realId: string;
@@ -43,7 +44,7 @@ export function ChatWithCV({
   const searchParams = useSearchParams();
   const [cvs, setCvs] = useState<CV[]>([]);
   const [selectedCV, setSelectedCV] = useState<string>(() => {
-  const urlFileName = searchParams.get("fileName");
+    const urlFileName = searchParams.get("fileName");
     return (
       urlFileName ||
       (typeof window !== "undefined"
@@ -56,6 +57,27 @@ export function ChatWithCV({
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [renderedHtml, setRenderedHtml] = useState<{ [key: number]: string }>(
+    {}
+  );
+
+  // Configure marked for better list rendering
+  marked.setOptions({
+    breaks: true, // Convert newlines to <br>
+    gfm: true, // Enable GitHub Flavored Markdown
+  });
+
+  // Function to parse and sanitize Markdown
+  const renderMessageContent = async (
+    content: string,
+    role: "user" | "assistant"
+  ) => {
+    if (role === "assistant") {
+      const html = await marked(content);
+      return DOMPurify.sanitize(html);
+    }
+    return content; // User messages remain plain text
+  };
 
   useEffect(() => {
     if (showInstructions) return;
@@ -93,7 +115,11 @@ export function ChatWithCV({
           setSelectedCV(urlFileName);
           localStorage.setItem("lastSelectedFileName", urlFileName);
         } else if (urlFileName && retryCount < 3) {
-          console.warn(`URL fileName ${urlFileName} not found in CV list, retrying (${retryCount + 1}/3)`);
+          console.warn(
+            `URL fileName ${urlFileName} not found in CV list, retrying (${
+              retryCount + 1
+            }/3)`
+          );
           setTimeout(() => setRetryCount((prev) => prev + 1), 1000);
         } else {
           console.log(`Setting default CV to ${data[0]?.fileName || ""}`);
@@ -101,7 +127,10 @@ export function ChatWithCV({
           setSelectedCV(defaultFileName);
           if (defaultFileName) {
             localStorage.setItem("lastSelectedFileName", defaultFileName);
-            router.push(`/admin/chat?fileName=${encodeURIComponent(defaultFileName)}`, { scroll: false });
+            router.push(
+              `/admin/chat?fileName=${encodeURIComponent(defaultFileName)}`,
+              { scroll: false }
+            );
           }
         }
       } catch (error) {
@@ -185,6 +214,22 @@ export function ChatWithCV({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    const renderMessages = async () => {
+      const newRenderedHtml: { [key: number]: string } = {};
+      for (let i = 0; i < messages.length; i++) {
+        if (messages[i].role === "assistant") {
+          newRenderedHtml[i] = await renderMessageContent(
+            messages[i].content,
+            messages[i].role
+          );
+        }
+      }
+      setRenderedHtml(newRenderedHtml);
+    };
+    void renderMessages();
   }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -348,7 +393,17 @@ export function ChatWithCV({
                                   </>
                                 )}
                               </div>
-                              <p>{message.content}</p>
+                              {message.role === "user" ? (
+                                <p>{message.content}</p>
+                              ) : (
+                                <div
+                                  className="prose prose-sm max-w-none"
+                                  dangerouslySetInnerHTML={{
+                                    __html:
+                                      renderedHtml[index] || message.content,
+                                  }}
+                                />
+                              )}
                             </div>
                           </div>
                         ))}
