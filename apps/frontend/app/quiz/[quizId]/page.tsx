@@ -183,6 +183,8 @@ export default function QuizPage({
     }
     if (savedSubmitted === "true") {
       setSubmitted(true);
+      setShowRules(false);
+      setQuizStarted(true);
     } else {
       setSubmitted(false);
     }
@@ -213,7 +215,7 @@ export default function QuizPage({
   }, [STORAGE_KEYS, startTime]);
 
   useEffect(() => {
-    if (timeLeft !== null) {
+    if (timeLeft !== null && timeLeft >= 0) {
       localStorage.setItem(STORAGE_KEYS.TIME_LEFT, timeLeft.toString());
     }
   }, [STORAGE_KEYS, timeLeft]);
@@ -259,11 +261,21 @@ export default function QuizPage({
       }
       try {
         const savedQuestions = localStorage.getItem(STORAGE_KEYS.QUESTIONS);
-        if (savedQuestions && quizStarted) {
+        const savedQuizStarted = localStorage.getItem(
+          STORAGE_KEYS.QUIZ_STARTED
+        );
+
+        // If we have saved questions AND the quiz was previously started, use those
+        if (savedQuestions && savedQuizStarted === "true") {
           setQuestions(JSON.parse(savedQuestions));
+          const savedTimeLeft = localStorage.getItem(STORAGE_KEYS.TIME_LEFT);
+          if (savedTimeLeft) {
+            setTimeLeft(parseInt(savedTimeLeft));
+          }
           setLoading(false);
           return;
         }
+
         const response = await fetch(
           `${
             process.env.NEXT_PUBLIC_API_URL
@@ -276,8 +288,13 @@ export default function QuizPage({
         }
         const data = await response.json();
         setQuestions(data.questions);
-        setTimeLimit(data.timeLimit || data.questions.length * 60);
-        setSubmitted(!!data.completedAt);
+        setTimeLimit(data.timeLimit || data.questions.length * 30);
+        setTimeLeft(data.timeLimit || data.questions.length * 30);
+        if (data.completedAt) {
+          setSubmitted(true);
+          setShowRules(false);
+          setQuizStarted(true);
+        }
         setLoading(false);
       } catch (err: any) {
         console.error("Error fetching quiz:", err);
@@ -287,7 +304,7 @@ export default function QuizPage({
       }
     };
     fetchQuiz();
-  }, [quizId, token, STORAGE_KEYS, quizStarted]);
+  }, [quizId, token, STORAGE_KEYS]);
 
   const showToastWithCooldown = useCallback(
     (
@@ -311,13 +328,82 @@ export default function QuizPage({
     []
   );
 
+  const handleAutoSubmit = async () => {
+    if (submitted) return;
+
+    setLoading(true);
+    try {
+      const timeTaken = timeLimit !== null ? timeLimit : 0;
+
+      // We'll submit whatever answers the candidate has provided, even if incomplete
+      const response = await fetch(
+        `${
+          process.env.NEXT_PUBLIC_API_URL
+        }/quiz/${quizId}/submit?token=${encodeURIComponent(token!)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            answers,
+            timeTaken,
+            isAutoSubmit: true, // Add a flag to indicate this is an auto-submission
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        // Even if submission fails, mark as submitted locally to prevent further attempts
+        setSubmitted(true);
+        Object.values(STORAGE_KEYS).forEach((key) =>
+          localStorage.removeItem(key)
+        );
+        showToastWithCooldown(
+          "Time's up! Your answers have been recorded.",
+          "info",
+          TOAST_IDS.TIME_UP
+        );
+        return;
+      }
+
+      setSubmitted(true);
+      Object.values(STORAGE_KEYS).forEach((key) =>
+        localStorage.removeItem(key)
+      );
+
+      showToastWithCooldown(
+        "Time's up! Your quiz has been automatically submitted.",
+        "info",
+        TOAST_IDS.TIME_UP
+      );
+    } catch (err: any) {
+      console.error("Error auto-submitting quiz:", err);
+      // Even if submission fails with an exception, mark as submitted locally
+      setSubmitted(true);
+      Object.values(STORAGE_KEYS).forEach((key) =>
+        localStorage.removeItem(key)
+      );
+      showToastWithCooldown(
+        "Time's up! Your quiz session has ended.",
+        "info",
+        TOAST_IDS.TIME_UP
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (timeLeft === null || submitted || !quizStarted) return;
 
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
-        if (prev === null || prev <= 1) {
+        if (prev === null || prev <= 0) {
           clearInterval(interval);
+
+          if (!submitted) {
+            handleAutoSubmit();
+          }
           return 0;
         }
         return prev - 1;
@@ -372,7 +458,7 @@ export default function QuizPage({
     const handleVisibilityChange = () => {
       if (document.hidden) {
         const handleVisibilityReturn = () => {
-          if (!document.hidden && timeLeft > 0 && !submitted) {
+          if (!document.hidden && timeLeft > 0 && !loading && !submitted) {
             shuffleQuestions();
             showToastWithCooldown(
               "Questions have been shuffled!",
@@ -380,7 +466,10 @@ export default function QuizPage({
               TOAST_IDS.SHUFFLE
             );
           }
-          document.removeEventListener("visibilitychange", handleVisibilityReturn);
+          document.removeEventListener(
+            "visibilitychange",
+            handleVisibilityReturn
+          );
         };
         document.addEventListener("visibilitychange", handleVisibilityReturn);
       }
@@ -419,7 +508,14 @@ export default function QuizPage({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.head.removeChild(style);
     };
-  }, [submitted, quizStarted, timeLeft, showToastWithCooldown, STORAGE_KEYS, TOAST_IDS]);
+  }, [
+    submitted,
+    quizStarted,
+    timeLeft,
+    showToastWithCooldown,
+    STORAGE_KEYS,
+    TOAST_IDS,
+  ]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -454,7 +550,8 @@ export default function QuizPage({
     }
     setLoading(true);
     try {
-      const timeTaken = Math.round((Date.now() - startTime) / 1000);
+      const timeTaken =
+        timeLimit !== null && timeLeft !== null ? timeLimit - timeLeft : 0;
       const response = await fetch(
         `${
           process.env.NEXT_PUBLIC_API_URL
@@ -499,7 +596,10 @@ export default function QuizPage({
               <CardTitle>Technical Quiz</CardTitle>
               {!submitted && (
                 <TooltipProvider>
-                  <Tooltip open={isRulesTooltipOpen} onOpenChange={setIsRulesTooltipOpen}>
+                  <Tooltip
+                    open={isRulesTooltipOpen}
+                    onOpenChange={setIsRulesTooltipOpen}
+                  >
                     <TooltipTrigger>
                       <Info className="h-5 w-5 text-gray-500" />
                     </TooltipTrigger>
@@ -509,7 +609,8 @@ export default function QuizPage({
                         <li>Do not switch tabs during the test.</li>
                         <li>Do not take screenshots or copy text.</li>
                         <li>
-                          The quiz is timed and must be submitted before time runs out.
+                          The quiz is timed and must be submitted before time
+                          runs out.
                         </li>
                         <li>
                           Repeated tab switching will shuffle or end the test.
@@ -576,7 +677,7 @@ export default function QuizPage({
       ) : null}
 
       <Dialog
-        open={showRules && !quizStarted}
+        open={!loading && showRules && !quizStarted}
         onOpenChange={() => {}}
         modal={true}
       >
@@ -588,7 +689,9 @@ export default function QuizPage({
             <ul className="list-disc pl-4 space-y-2">
               <li>Do not switch tabs during the test.</li>
               <li>Do not take screenshots or copy text.</li>
-              <li>The quiz is timed and must be submitted before time runs out.</li>
+              <li>
+                The quiz is timed and must be submitted before time runs out.
+              </li>
               <li>Repeated tab switching will shuffle or end the test.</li>
             </ul>
             <div className="flex items-center space-x-2">
