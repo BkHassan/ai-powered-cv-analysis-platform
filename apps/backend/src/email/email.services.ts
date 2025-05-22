@@ -39,7 +39,9 @@ export class EmailService {
         subject: 'Your OTP Code',
         html: `
           <h2>Email Verification</h2>
-          <p>Your verification code is <strong>${otp}</strong>.</p>
+          <p>Your verification code is:</p>
+          <h1 style="font-size: 32px; letter-spacing: 5px; color: #2563eb; background: #f3f4f6; padding: 10px; text-align: center; border-radius: 5px;">${otp}</h1>
+          <p><strong>Important:</strong> Please enter this code exactly as shown above. The code is case-sensitive and must be entered in the correct order.</p>
           <p>It expires in 5 minutes.</p>
           <p>If you did not request this, please ignore this email.</p>
         `,

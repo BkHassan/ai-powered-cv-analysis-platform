@@ -1,65 +1,116 @@
 "use client";
 
 import type React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { ForgotPasswordForm } from "./forgot-password-form";
+import { useSearchParams } from "next/navigation";
 
 export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    // Check for email in URL parameters
+    const emailParam = searchParams.get("email");
+    const fromReset = searchParams.get("fromReset");
+
+    if (emailParam && fromReset === "true") {
+      setEmail(emailParam);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage("");
 
+    // Skip validation if we're auto-submitting from password reset
+    const isAutoSubmit =
+      localStorage.getItem("resetCredentials") === null && email && password;
+    if (!isAutoSubmit) {
+      // Basic validation
+      if (!email || !email.includes("@")) {
+        setErrorMessage("Please enter a valid email address");
+        toast.error("Please enter a valid email address");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!password || password.length < 6) {
+        setErrorMessage("Password must be at least 6 characters long");
+        toast.error("Password must be at least 6 characters long");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     const formData = {
-      email: (e.currentTarget.elements.namedItem("email") as HTMLInputElement).value,
-      password: (e.currentTarget.elements.namedItem("password") as HTMLInputElement).value,
+      email,
+      password,
     };
-    setEmail(formData.email);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(formData),
+        }
+      );
 
       const errorData = await response.json();
 
       if (!response.ok) {
         if (response.status === 404 || errorData.message === "User not found") {
-          const msg = "No account found with this email. Would you like to sign up?";
+          const msg =
+            "No account found with this email. Would you like to sign up?";
+          setErrorMessage(msg);
+          toast.error(msg);
+          // Redirect to signup with email parameter
+          const params = new URLSearchParams({
+            email: email,
+          });
+          window.location.href = `/signup?${params.toString()}`;
+          return;
+        }
+
+        if (
+          response.status === 401 &&
+          errorData.message.includes("Email not verified")
+        ) {
+          const msg =
+            "Please verify your email with the OTP sent to your inbox.";
           setErrorMessage(msg);
           toast.error(msg);
           return;
         }
 
-        if (response.status === 401 && errorData.message.includes("Email not verified")) {
-          const msg = "Please verify your email with the OTP sent to your inbox.";
-          setErrorMessage(msg);
-          toast.error(msg);
-          return;
-        }
-
-        if (response.status === 401 || errorData.message === "Incorrect password") {
+        if (
+          response.status === 401 ||
+          errorData.message === "Incorrect password"
+        ) {
           const msg = "Incorrect password. Please try again.";
           setErrorMessage(msg);
           toast.error(msg);
           return;
         }
 
-        const msg = errorData.message || "Login failed. Please check your credentials.";
+        const msg =
+          errorData.message || "Login failed. Please check your credentials.";
         setErrorMessage(msg);
         toast.error(msg);
         return;
@@ -81,13 +132,16 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
   // Optional: Resend OTP (requires backend endpoint)
   const handleResendOtp = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -100,6 +154,10 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
     }
   };
 
+  if (showForgotPassword) {
+    return <ForgotPasswordForm onBack={() => setShowForgotPassword(false)} />;
+  }
+
   return (
     <>
       <ToastContainer />
@@ -110,6 +168,8 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
             id="email"
             type="email"
             placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
           />
@@ -122,6 +182,8 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
               id="password"
               type={showPassword ? "text" : "password"}
               placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
             />
@@ -137,7 +199,9 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
               ) : (
                 <EyeIcon className="h-4 w-4 text-muted-foreground" />
               )}
-              <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
+              <span className="sr-only">
+                {showPassword ? "Hide password" : "Show password"}
+              </span>
             </Button>
           </div>
         </div>
@@ -167,7 +231,11 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
         )}
 
         <div className="flex justify-end">
-          <button type="button" className="text-sm text-primary hover:underline">
+          <button
+            type="button"
+            className="text-sm text-primary hover:underline"
+            onClick={() => setShowForgotPassword(true)}
+          >
             Forgot password?
           </button>
         </div>

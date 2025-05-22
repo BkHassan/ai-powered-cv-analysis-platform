@@ -337,14 +337,25 @@ export class AuthService implements OnModuleInit {
       });
 
       if (result.ids.length === 0 || !result.documents[0]) {
+        this.logger.error('No OTP found in database');
         throw new UnauthorizedException('Invalid or expired OTP');
       }
 
       const otpDoc = JSON.parse(result.documents[0]);
+      this.logger.log(`Stored OTP in database: ${otpDoc.otp}`);
+      this.logger.log(
+        `OTP expiration: ${new Date(otpDoc.expiresAt).toISOString()}`,
+      );
+      this.logger.log(`Current time: ${new Date().toISOString()}`);
+
       if (otpDoc.otp !== dto.otp) {
+        this.logger.error(
+          `OTP mismatch - Received: ${dto.otp}, Stored: ${otpDoc.otp}`,
+        );
         throw new UnauthorizedException('Invalid OTP');
       }
       if (otpDoc.expiresAt < Date.now()) {
+        this.logger.error('OTP expired');
         await this.otpTokenCollection.delete({ ids: [result.ids[0]] });
         throw new UnauthorizedException('OTP expired');
       }
@@ -393,52 +404,59 @@ export class AuthService implements OnModuleInit {
         throw new NotFoundException('User not found');
       }
 
-      this.logger.log('Generating reset token');
-      const resetToken = uuidv4();
-      const expiresAt = Date.now() + 3600000; // 1 hour expiration
-      const tokenDocument = JSON.stringify({ email, resetToken, expiresAt });
+      // Delete any existing OTP for this email
+      const existingOtp = await this.otpTokenCollection.get({
+        where: { email },
+      });
+      if (existingOtp.ids.length > 0) {
+        this.logger.log('Deleting existing OTP');
+        await this.otpTokenCollection.delete({ ids: existingOtp.ids });
+      }
 
-      this.logger.log('Storing reset token in ChromaDB');
-      await this.resetTokenCollection.add({
-        ids: [resetToken],
-        documents: [tokenDocument],
+      // Generate and store OTP
+      this.logger.log('Generating OTP');
+      const otp = this.generateOTP();
+      this.logger.log(`Generated OTP: ${otp}`);
+
+      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+      const otpDocument = JSON.stringify({
+        email,
+        otp,
+        expiresAt,
+        verified: false,
+      });
+
+      this.logger.log('Storing OTP in ChromaDB');
+      const otpId = `otp_${uuidv4()}`;
+      await this.otpTokenCollection.add({
+        ids: [otpId],
+        documents: [otpDocument],
         metadatas: [{ email }],
       });
 
-      this.logger.log('Sending reset password email');
-
-      await this.emailService.sendOtpEmail(email, resetToken);
+      // Send OTP email
+      this.logger.log('Sending OTP email');
+      await this.emailService.sendOtpEmail(email, otp);
     } catch (error) {
       this.logger.error(
-        `Forgot password failed', ${error.message}`,
-        error.message,
+        `Forgot password failed: ${error.message}`,
+        error.stack,
       );
       throw error;
     }
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
-    const { resetToken, newPassword } = resetPasswordDto;
+    const { email, otp, newPassword } = resetPasswordDto;
 
     try {
-      this.logger.log(`Validating reset token: ${resetToken}`);
-      const result = await this.resetTokenCollection.get({
-        ids: [resetToken],
-      });
+      // First verify the OTP using the existing verifyOtp function
+      await this.verifyOtp({ email, otp });
 
-      if (result.ids.length === 0 || !result.documents[0]) {
-        throw new UnauthorizedException('Invalid or expired reset token');
-      }
-
-      const tokenDoc = JSON.parse(result.documents[0]);
-      if (tokenDoc.expiresAt < Date.now()) {
-        await this.resetTokenCollection.delete({ ids: [resetToken] });
-        throw new UnauthorizedException('Reset token expired');
-      }
-
-      this.logger.log(`Finding user with email: ${tokenDoc.email}`);
+      // If OTP is valid, proceed with password reset
+      this.logger.log(`Finding user with email: ${email}`);
       const userResult = await this.userCollection.get({
-        where: { email: tokenDoc.email },
+        where: { email },
       });
 
       if (userResult.ids.length === 0 || !userResult.documents[0]) {
@@ -457,11 +475,8 @@ export class AuthService implements OnModuleInit {
       await this.userCollection.update({
         ids: [userResult.ids[0]],
         documents: [updatedUserDoc],
-        metadatas: [{ email: tokenDoc.email }],
+        metadatas: [{ email }],
       });
-
-      this.logger.log('Deleting used reset token');
-      await this.resetTokenCollection.delete({ ids: [resetToken] });
 
       this.logger.log('Password reset successfully');
     } catch (error) {
