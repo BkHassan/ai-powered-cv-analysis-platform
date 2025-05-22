@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -45,6 +45,7 @@ export function Navbar() {
 
 function NavLinks({ mobile = false, onClick = () => {} }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const links = [
     { href: "/admin", label: "Home" },
@@ -55,18 +56,28 @@ function NavLinks({ mobile = false, onClick = () => {} }) {
 
   return (
     <>
-      {links.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          className={`hover:text-purple-600 transition-colors ${
-            mobile ? "block py-2 text-lg" : "text-sm font-medium"
-          }`}
-          onClick={onClick}
-        >
-          {link.label}
-        </Link>
-      ))}
+      {links.map((link) => {
+        const isActive =
+          pathname === link.href ||
+          (link.href !== "/admin" && pathname?.startsWith(link.href));
+
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            style={{
+              fontWeight: isActive ? "700" : "500",
+              color: isActive ? "#7e22ce" : "inherit",
+            }}
+            className={`hover:text-purple-600 transition-colors ${
+              mobile ? "block py-2 text-lg" : "text-sm"
+            }`}
+            onClick={onClick}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
       <span
         onClick={() => {
           localStorage.removeItem("token");

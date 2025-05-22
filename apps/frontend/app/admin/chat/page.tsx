@@ -5,6 +5,8 @@ import { Navbar } from "@/components/navbar";
 import { ChatWithCV } from "@/components/chat-with-cv";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Home, ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
@@ -33,8 +35,19 @@ export default function ChatPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="container mx-auto pt-24 pb-10 px-4">
-        <h1 className="text-3xl font-bold mb-8">Chat with CV</h1>
+      <main className="container mx-auto pt-24 pb-10 mt-8 px-4">
+        {/* <h1 className="text-3xl font-bold mb-8">Chat with CV</h1> */}
+
+        <div className="flex items-center text-sm text-gray-700 mb-4">
+          <Home className="w-5 h-5 mr-2" />
+          <Link
+            href="/admin"
+            className="flex items-center hover:text-purple-700 transition-colors"
+          >
+          <ChevronRight className="w-4 h-4 mx-2" />
+          <span className="font-semibold">Chat with CV</span>
+          </Link>
+        </div>
 
         <div className="max-w-3xl mx-auto">
           <ChatWithCV initialFileName={cvId} />

@@ -120,19 +120,19 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
   };
 
   return (
-    <Card className="w-full shadow-lg hover:shadow-xl transition-shadow duration-300">
-      <CardHeader>
+    <Card className="w-full shadow-lg hover:shadow-xl transition-shadow duration-300 h-full flex flex-col">
+      <CardHeader className="pb-2">
         <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
           <Upload size={20} />
           Upload CV
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleUpload} className="space-y-6">
+      <CardContent className="flex-1 flex flex-col">
+        <form onSubmit={handleUpload} className="space-y-4 flex-1 flex flex-col">
           <div>
             <label
               htmlFor="cv-name"
-              className="block text-sm font-bold mb-2 text-gray-700 mb-1"
+              className="block text-sm font-bold mb-1 text-gray-700"
             >
               Add A Name or Note
             </label>
@@ -146,16 +146,16 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
               disabled={uploading}
             />
           </div>
-          <div className="flex items-center justify-center w-full">
+          <div className="flex items-center justify-center w-full flex-1">
             <label
               htmlFor="dropzone-file"
-              className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer transition-colors duration-300 ease-in-out hover:bg-blue-50 focus:ring-4 focus:ring-blue-300"
+              className="flex flex-col items-center justify-center w-full h-44 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer transition-colors duration-300 ease-in-out hover:bg-blue-50 focus:ring-4 focus:ring-blue-300"
             >
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+              <div className="flex flex-col items-center justify-center pt-4 pb-4">
                 {file ? (
                   <>
                     <svg
-                      className="w-8 h-8 mb-4 text-gray-500"
+                      className="w-8 h-8 mb-2 text-gray-500"
                       aria-hidden="true"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
@@ -180,7 +180,7 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
                 ) : (
                   <>
                     <svg
-                      className="w-8 h-8 mb-4 text-gray-500"
+                      className="w-8 h-8 mb-2 text-gray-500"
                       aria-hidden="true"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
@@ -217,7 +217,7 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
           {status.type && (
             <Alert
               variant={status.type === "success" ? "default" : "destructive"}
-              className="mt-4"
+              className="mt-2"
             >
               {status.type === "success" ? (
                 <CheckCircle className="h-4 w-4" />
@@ -234,7 +234,7 @@ export function UploadCV({ onUploadSuccess }: UploadCVProps) {
           <Button
             type="submit"
             disabled={uploading || !file}
-            className="w-full py-2 px-4 text-white font-semibold bg-blue-600 hover:bg-blue-700 transition-colors duration-300 disabled:bg-gray-400"
+            className="w-full py-2 px-4 text-white font-semibold bg-blue-600 hover:bg-blue-700 transition-colors duration-300 disabled:bg-gray-400 mt-auto"
           >
             {uploading ? "Uploading..." : "Upload CV"}
           </Button>

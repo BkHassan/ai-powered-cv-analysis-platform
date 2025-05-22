@@ -11,13 +11,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Send, User, FileQuestion } from "lucide-react";
+import {
+  MessageSquare,
+  Send,
+  User,
+  WandSparkles,
+} from "lucide-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { GlobalChatWithCV } from "@/components/global-chat-with-cv";
 
 interface CV {
   realId: string;
@@ -60,11 +66,12 @@ export function ChatWithCV({
   const [renderedHtml, setRenderedHtml] = useState<{ [key: number]: string }>(
     {}
   );
+  const [userRole, setUserRole] = useState<string>("");
 
   // Configure marked for better list rendering
   marked.setOptions({
-    breaks: true, // Convert newlines to <br>
-    gfm: true, // Enable GitHub Flavored Markdown
+    breaks: true,
+    gfm: true,
   });
 
   // Function to parse and sanitize Markdown
@@ -89,6 +96,19 @@ export function ChatWithCV({
           toast.error("Please log in to view CVs");
           return;
         }
+
+        // Fetch user role (assuming /auth/me returns role)
+        const userResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/me`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          setUserRole(userData.role || "");
+        }
+
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv`, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -296,17 +316,17 @@ export function ChatWithCV({
       <CardHeader className="pb-0 flex flex-row items-center justify-between">
         <CardTitle className="text-xl flex items-center gap-2">
           <MessageSquare size={20} className="font-bold" />
-          Getting Started
+          Chat with CV
         </CardTitle>
         {!showInstructions && selectedCV && (
           <Button
             size="sm"
-            className="bg-blue-500 hover:bg-blue-600 text-white"
+            className="bg-gradient-to-r from-purple-600 via-pink-500 to-fuchsia-500 hover:opacity-90 text-white"
             asChild
             aria-label="Generate quiz for selected CV"
           >
             <Link href={`/admin/quiz/${encodeURIComponent(selectedCV)}`}>
-              <FileQuestion className="h-4 w-4 mr-1" />
+              <WandSparkles className="h-4 w-4 mr-1" />
               Generate Quiz
             </Link>
           </Button>
@@ -319,7 +339,7 @@ export function ChatWithCV({
               <p className="mb-8 font-bold text-gray-600 text-base">
                 Follow these simple steps to:
               </p>
-              <ol className="list-decimal pl-5 space-y-4 font-bold text-gray-600">
+              <ol className="list-decimal pl-5 space-y-6 font-semibold text-gray-600">
                 <li>Upload a candidate's CV using the form</li>
                 <li>Review the extracted information</li>
                 <li>Chat with AI to ask questions about the CV</li>
@@ -346,6 +366,9 @@ export function ChatWithCV({
                   <SelectValue placeholder="Select a CV" />
                 </SelectTrigger>
                 <SelectContent>
+                  {userRole === "admin" && (
+                    <SelectItem value="global">All CVs</SelectItem>
+                  )}
                   {cvs.map((cv) => (
                     <SelectItem key={cv.fileName} value={cv.fileName}>
                       {cv.name}
@@ -353,104 +376,116 @@ export function ChatWithCV({
                   ))}
                 </SelectContent>
               </Select>
-              {selectedCV && (
-                <>
-                  <div className="border rounded-md p-4 h-[300px] overflow-y-auto bg-white">
-                    {messages.length === 0 && !isLoading ? (
-                      <div className="text-center text-muted-foreground h-full flex items-center justify-center">
-                        <p>Start chatting about the selected CV</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {messages.map((message, index) => (
-                          <div
-                            key={index}
-                            className={`flex ${
-                              message.role === "user"
-                                ? "justify-end"
-                                : "justify-start"
-                            }`}
-                          >
+              {selectedCV === "global" ? (
+                <GlobalChatWithCV />
+              ) : (
+                selectedCV && (
+                  <>
+                    <div className="border rounded-md p-4 h-[300px] overflow-y-auto bg-white">
+                      {messages.length === 0 && !isLoading ? (
+                        <div className="text-center text-muted-foreground h-full flex items-center justify-center">
+                          <p>Start chatting about the selected CV</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {messages.map((message, index) => (
                             <div
-                              className={`max-w-[80%] rounded-lg px-4 py-2 shadow-md ${
+                              key={index}
+                              className={`flex ${
                                 message.role === "user"
-                                  ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
-                                  : "bg-purple-50 text-purple-800"
+                                  ? "justify-end"
+                                  : "justify-start"
                               }`}
                             >
-                              <div className="flex items-center gap-2 mb-1">
+                              <div
+                                className={`max-w-[80%] rounded-lg px-4 py-2 shadow-md ${
+                                  message.role === "user"
+                                    ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white"
+                                    : "bg-purple-50 text-purple-800"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  {message.role === "user" ? (
+                                    <>
+                                      <span className="font-medium">You</span>
+                                      <User size={14} />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="font-medium">
+                                        AI Assistant
+                                      </span>
+                                      <MessageSquare size={14} />
+                                    </>
+                                  )}
+                                </div>
                                 {message.role === "user" ? (
-                                  <>
-                                    <span className="font-medium">You</span>
-                                    <User size={14} />
-                                  </>
+                                  <p>{message.content}</p>
                                 ) : (
-                                  <>
-                                    <span className="font-medium">
-                                      AI Assistant
-                                    </span>
-                                    <MessageSquare size={14} />
-                                  </>
+                                  <div
+                                    className="prose prose-sm max-w-none"
+                                    dangerouslySetInnerHTML={{
+                                      __html:
+                                        renderedHtml[index] || message.content,
+                                    }}
+                                  />
                                 )}
                               </div>
-                              {message.role === "user" ? (
-                                <p>{message.content}</p>
-                              ) : (
-                                <div
-                                  className="prose prose-sm max-w-none"
-                                  dangerouslySetInnerHTML={{
-                                    __html:
-                                      renderedHtml[index] || message.content,
-                                  }}
-                                />
-                              )}
                             </div>
-                          </div>
-                        ))}
-                        {isLoading && (
-                          <div className="flex justify-start">
-                            <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium">
-                                  AI Assistant
-                                </span>
-                                <MessageSquare size={14} />
-                              </div>
-                              <div className="flex items-center gap-2 text-2xl text-black">
-                                <span className="">●</span>
-                                <span className=" delay-200">●</span>
-                                <span className=" delay-400">●</span>
-                                <div className="text-xs text-center text-purple-400 mt-1">
-                                  is thinking
+                          ))}
+                          {isLoading && (
+                            <div className="flex justify-start">
+                              <div className="max-w-[80%] rounded-lg px-4 py-2 bg-purple-50 text-purple-800 shadow-md">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-medium">
+                                    AI Assistant
+                                  </span>
+                                  <MessageSquare size={14} />
+                                </div>
+                                <div className="flex flex-col items-center">
+                                  <div className="flex items-center gap-2 text-2xl">
+                                    <span className="text-purple-600 animate-bounce inline-block">
+                                      ●
+                                    </span>
+                                    <span className="text-purple-600 animate-bounce inline-block delay-150">
+                                      ●
+                                    </span>
+                                    <span className="text-purple-600 animate-bounce inline-block delay-300">
+                                      ●
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-center text-purple-400 mt-1">
+                                    AI is thinking
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                      </div>
-                    )}
-                  </div>
-                  <form
-                    onSubmit={handleSendMessage}
-                    className="flex gap-2 mt-2"
-                  >
-                    <Input
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder="Ask a question about this CV..."
-                      disabled={isLoading}
-                    />
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={isLoading || !input.trim()}
-                      className="bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
+                          )}
+                          <div ref={messagesEndRef} />
+                        </div>
+                      )}
+                    </div>
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="flex gap-2 mt-2"
                     >
-                      <Send size={18} className="text-white" />
-                    </Button>
-                  </form>
-                </>
+                      <Input
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Ask a question about this CV..."
+                        disabled={isLoading}
+                      />
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={isLoading || !input.trim()}
+                        className="bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90"
+                      >
+                        <Send size={18} className="text-white" />
+                      </Button>
+                    </form>
+                  </>
+                )
               )}
             </>
           )}

@@ -15,7 +15,10 @@ import {
   User,
   Mail,
   Calendar,
-  FileQuestion,
+  Home,
+  ChevronRight,
+  Search,
+  WandSparkles,
 } from "lucide-react";
 import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -73,74 +76,75 @@ function CVCard({ cv, onDelete }: CVCardProps) {
 
   return (
     <Card className="overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-105 bg-white/90 backdrop-blur-sm border border-purple-100">
-      <CardHeader className="text-white p-4 flex flex-row items-center justify-between">
-        <CardTitle className="text-gray-700 text-lg flex items-center gap-2">
-          <User size={20} />
+      <CardHeader className="text-white px-3 py-3 flex flex-row items-center justify-between">
+        <CardTitle className="text-gray-700 text-base flex items-center gap-2">
+          <User size={18} />
           {cv.name} <span className="text-sm opacity-75">(#{cv.indexId})</span>
         </CardTitle>
         <div className="flex gap-1">
-          {!isLoadingQuizzes &&
-            quizId && (
-              <QuizResults quizId={quizId} simple />
-            )}
+          {!isLoadingQuizzes && quizId && (
+            <QuizResults quizId={quizId} simple />
+          )}
         </div>
       </CardHeader>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-center gap-2 text-gray-700">
-          <Mail size={16} />
-          <span className="text-sm">{cv.email}</span>
+      <CardContent className="px-3 py-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-gray-700">
+            <Mail size={14} />
+            <span className="text-sm">{cv.email}</span>
+          </div>
+          <div className="flex items-center gap-2 text-gray-700">
+            <Calendar size={14} />
+            <span className="text-sm">
+              {new Intl.DateTimeFormat("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              }).format(new Date(cv.uploadDate))}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-gray-700">
-          <Calendar size={16} />
-          <span className="text-sm">
-            {new Intl.DateTimeFormat("en-US", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            }).format(new Date(cv.uploadDate))}
-          </span>
-        </div>
-        <div className="flex gap-2 mt-4">
+        <div className="grid grid-cols-2 gap-2 mt-4">
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 hover:bg-purple-500 hover:text-white transition-colors"
-            asChild
-          >
-            <Link href={`/admin/cvs/${cv.fileName}`}>
-              <Eye className="h-4 w-4 mr-1" />
-              View
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 hover:bg-green-500 hover:text-white transition-colors"
-            asChild
-          >
-            <Link href={`/admin/chat?fileName=${cv.fileName}`}>
-              <MessageSquare className="h-4 w-4 mr-1" />
-              Chat
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 hover:bg-blue-500 hover:text-white transition-colors"
+            className="border rounded text-black hover:text-yellow-500 hover:border-yellow-500 hover:bg-white transition w-[95%] h-8"
             asChild
           >
             <Link href={`/admin/quiz/${cv.fileName}`}>
-              <FileQuestion className="h-4 w-4 mr-1" />
+              <WandSparkles className="h-4 w-4 mr-1" />
               Quiz
             </Link>
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 hover:bg-red-500 hover:text-white transition-colors"
+            className="border rounded text-black hover:text-purple-500 hover:border-purple-500 hover:bg-white transition w-[95%] h-8"
+            asChild
+          >
+            <Link href={`/admin/cvs/${cv.fileName}`}>
+              <Eye className="h-3.5 w-3.5 mr-1" />
+              View
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border rounded text-black hover:text-green-500 hover:border-green-500 hover:bg-white transition w-[95%] h-8"
+            asChild
+          >
+            <Link href={`/admin/chat?fileName=${cv.fileName}`}>
+              <MessageSquare className="h-3.5 w-3.5 mr-1" />
+              Chat
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border rounded text-black hover:text-red-500 hover:border-red-500 hover:bg-white transition w-[95%] h-8"
             onClick={() => onDelete(cv.realId)}
           >
-            <Trash2 className="h-4 w-4 mr-1" />
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
             Delete
           </Button>
         </div>
@@ -216,7 +220,6 @@ export function CVList({ refreshKey = 0, isAdmin = false }: CVListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const { cvs, loading, status, handleDelete } = useCVs(refreshKey);
 
-
   const filteredCVs = cvs.filter(
     (cv) =>
       cv.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -224,18 +227,29 @@ export function CVList({ refreshKey = 0, isAdmin = false }: CVListProps) {
   );
 
   return (
-    <div className="w-full space-y-6">
-      <div className="flex items-center gap-2 mb-6">
-        <User size={24} className="text-gray-700" />
-        <h2 className="text-2xl font-semibold text-gray-700">CV List</h2>
+    <div className="w-full space-y-12">
+      <div className="flex items-center text-sm text-gray-700 mb-4">
+        <Home className="w-5 h-5 mr-2" />
+        <Link
+          href="/admin"
+          className="flex items-center hover:text-purple-700 transition-colors"
+        >
+          <ChevronRight className="w-4 h-4 mx-2" />
+          <span className="font-semibold">CV List</span>
+        </Link>
       </div>
 
-      <Input
-        placeholder="Search by email or name..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="max-w-md"
-      />
+      <div className="flex justify-center">
+        <div className="relative w-2/4">
+          <Input
+            placeholder="Search by email or name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pr-10 h-8 rounded-full border-purple-200 focus:border-purple-500 focus:ring-purple-500"
+          />
+          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+        </div>
+      </div>
 
       {status.type && (
         <Alert variant={status.type === "success" ? "default" : "destructive"}>

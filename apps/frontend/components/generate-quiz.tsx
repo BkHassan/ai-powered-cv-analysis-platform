@@ -198,14 +198,22 @@ export function GenerateQuiz({
     <Card className="w-full shadow-lg">
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-            <BookOpen size={20} />
-            Generate Quiz
-          </CardTitle>
-          <CardTitle className="text-gray-700 text-lg flex items-center gap-2">
-            <User size={20} />
-            {cvName}
-          </CardTitle>
+          {!quizData ? (
+            <>
+              <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                <BookOpen size={20} />
+                Generate Quiz
+              </CardTitle>
+              <CardTitle className="text-gray-700 text-lg flex items-center gap-2">
+                <User size={20} />
+                {cvName}
+              </CardTitle>
+            </>
+          ) : (
+            <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2 mx-auto">
+              Generate Quiz
+            </CardTitle>
+          )}
         </div>
       </CardHeader>
       <CardContent>

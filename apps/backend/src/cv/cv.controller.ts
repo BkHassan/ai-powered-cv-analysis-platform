@@ -111,10 +111,34 @@ export class CvController {
     );
   }
 
+  @Post('global-chat')
+  async globalChatCv(
+    @Body() chatCvDto: ChatCvDto,
+    @Req() req,
+  ) {
+    this.logger.log(`Global chat request by ${req.user.email}`);
+    if (!chatCvDto.message) {
+      this.logger.warn('Missing message in chatCvDto');
+      throw new BadRequestException('Message is required');
+    }
+    return this.cvService.globalChatCv(
+      chatCvDto,
+      req.user.email,
+      req.user.role,
+    );
+  }
+
   @Get(':fileName/chat-history')
   @UseGuards(JwtAuthGuard)
   async getChatHistory(@Param('fileName') fileName: string, @Req() req: any) {
     const user = req.user as { email: string; role: string };
     return this.cvService.getChatHistory(fileName, user.email, user.role);
+  }
+
+  @Get('global-chat-history')
+  async getGlobalChatHistory(@Req() req: any) {
+    const user = req.user as { email: string; role: string };
+    this.logger.log(`Global chat history request by ${user.email}`);
+    return this.cvService.getGlobalChatHistory(user.email, user.role);
   }
 }

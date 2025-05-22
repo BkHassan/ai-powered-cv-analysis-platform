@@ -28,13 +28,7 @@ export function QuizAttemptList({ fileName }: QuizAttemptListProps) {
   };
 
   if (loading) {
-    return (
-      <Card className="mt-2 border-gray-200 shadow-sm">
-        <CardContent className="p-3">
-          <p className="text-sm text-gray-500">Loading attempts...</p>
-        </CardContent>
-      </Card>
-    );
+    return null;
   }
 
   if (error) {
@@ -48,7 +42,13 @@ export function QuizAttemptList({ fileName }: QuizAttemptListProps) {
   }
 
   if (attempts.length === 0) {
-    return null;
+    return (
+      <Card className="mt-2 border-gray-200 shadow-sm">
+        <CardContent className="p-3">
+          <p className="text-sm text-gray-500">No Attempts stored Yet</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   // Only show last 3 attempts

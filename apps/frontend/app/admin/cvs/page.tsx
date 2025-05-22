@@ -27,12 +27,14 @@ export default function CVListPage() {
   }
 
   return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50">
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
       <main className="container mx-auto pt-24 pb-10 px-4">
         <CVList />
       </main>
+    </div>
     </div>
   );
 }
