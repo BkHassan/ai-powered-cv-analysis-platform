@@ -235,7 +235,7 @@ export function CVList({ refreshKey = 0, isAdmin = false }: CVListProps) {
           className="flex items-center hover:text-purple-700 transition-colors"
         >
           <ChevronRight className="w-4 h-4 mx-2" />
-          <span className="font-semibold">CV List</span>
+          <span className="font-semibold">Profils</span>
         </Link>
       </div>
 
@@ -245,7 +245,7 @@ export function CVList({ refreshKey = 0, isAdmin = false }: CVListProps) {
             placeholder="Search by email or name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pr-10 h-8 rounded-full border-purple-200 focus:border-purple-500 focus:ring-purple-500"
+            className="pr-10 h-8 rounded-full border-gray-300 focus:border-black focus:ring-0 focus:outline-none transition-colors"
           />
           <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
         </div>

@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
   Logger,
   NotFoundException,
+  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
@@ -264,6 +265,7 @@ export class AuthService implements OnModuleInit {
 
       this.logger.log('Storing user in ChromaDB');
       const userId = `user_${uuidv4()}`;
+      const createdDate = new Date().toISOString();
       const userDocument = JSON.stringify({
         name,
         email,
@@ -271,6 +273,7 @@ export class AuthService implements OnModuleInit {
         cv_id: [],
         role: 'user',
         isEmailVerified: false,
+        createdDate,
       });
 
       //save the user data
@@ -499,6 +502,104 @@ export class AuthService implements OnModuleInit {
 
     await this.userCollection.delete({ ids: result.ids });
     this.logger.log(`Deleted user with email: ${email}`);
+  }
+
+  async getAllUsers(requesterRole: string): Promise<any[]> {
+    if (requesterRole !== 'admin') {
+      this.logger.warn('Unauthorized attempt to list users');
+      throw new ForbiddenException('Only admins can view all users');
+    }
+
+    try {
+      this.logger.log('Fetching all users from ChromaDB');
+      const result = await this.userCollection.get();
+      if (!result.documents || result.documents.length === 0) {
+        this.logger.warn('No users found in userCollection');
+        return [];
+      }
+
+      const users = result.documents
+        .map((doc, index) => {
+          try {
+            const parsedDoc = JSON.parse(doc!);
+            const userId = result.ids[index];
+            const createdDate = parsedDoc.createdDate || this.inferCreatedDate(userId);
+            return {
+              id: userId,
+              name: parsedDoc.name,
+              email: parsedDoc.email,
+              role: parsedDoc.role,
+              isEmailVerified: parsedDoc.isEmailVerified,
+              cv_id: parsedDoc.cv_id || [],
+              createdDate,
+            };
+          } catch (error) {
+            this.logger.error(`Failed to parse user document ${result.ids[index]}: ${error.message}`);
+            return null;
+          }
+        })
+        .filter((user) => user !== null);
+
+      this.logger.log(`Retrieved ${users.length} users`);
+      return users;
+    } catch (error) {
+      this.logger.error(`Failed to fetch users: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateUserRole(email: string, newRole: 'user' | 'admin', requesterEmail: string, requesterRole: string): Promise<void> {
+    if (requesterRole !== 'admin') {
+      this.logger.warn(`Unauthorized role update attempt by ${requesterEmail}`);
+      throw new ForbiddenException('Only admins can update user roles');
+    }
+
+    if (email === requesterEmail && newRole === 'user') {
+      const adminCountResult = await this.userCollection.get();
+      const adminCount = adminCountResult.documents.filter((doc) => {
+        if (!doc) return false;
+        const userDoc = JSON.parse(doc);
+        return userDoc.role === 'admin';
+      }).length;
+
+      if (adminCount <= 1) {
+        this.logger.warn(`Cannot demote last admin ${email}`);
+        throw new BadRequestException('Cannot demote the last admin user');
+      }
+    }
+
+    try {
+      this.logger.log(`Updating role for ${email} to ${newRole}`);
+      const result = await this.userCollection.get({
+        where: { email },
+      });
+
+      if (result.ids.length === 0 || !result.documents[0]) {
+        throw new NotFoundException(`User with email ${email} not found`);
+      }
+
+      const userDoc = JSON.parse(result.documents[0]);
+      const updatedUserDoc = JSON.stringify({
+        ...userDoc,
+        role: newRole,
+      });
+
+      await this.userCollection.update({
+        ids: [result.ids[0]],
+        documents: [updatedUserDoc],
+        metadatas: [{ email }],
+      });
+
+      this.logger.log(`Updated role for ${email} to ${newRole}`);
+    } catch (error) {
+      this.logger.error(`Failed to update role for ${email}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private inferCreatedDate(userId: string): string {
+    const timestamp = parseInt(userId.split('_').pop()!.slice(0, 13), 16) || Date.now();
+    return new Date(timestamp).toISOString();
   }
 
   // async debugUsers() {

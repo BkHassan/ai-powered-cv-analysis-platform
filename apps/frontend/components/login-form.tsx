@@ -24,10 +24,15 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
     // Check for email in URL parameters
     const emailParam = searchParams.get("email");
     const fromReset = searchParams.get("fromReset");
+    const fromSignup = searchParams.get("fromSignup")
 
-    if (emailParam && fromReset === "true") {
+    if (emailParam && (fromReset === "true" || fromSignup === "true")) {
       setEmail(emailParam);
+
+      if (fromSignup === "true") {
+        toast.success("Account created successfully! Please log in.");
     }
+  }
   }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {

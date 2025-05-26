@@ -275,6 +275,27 @@ export class CvService {
       });
       this.logger.log(`Stored CV metadata for ${cvId}`);
 
+      // Update user's cv_id array in userCollection
+      const userResult = await this.userCollection.get({
+        where: { email: uploaderEmail },
+      });
+      if (userResult.ids.length === 0 || !userResult.documents[0]) {
+        this.logger.warn(`User ${uploaderEmail} not found for CV linking`);
+        throw new NotFoundException(`User ${uploaderEmail} not found`);
+      }
+      const userDoc = JSON.parse(userResult.documents[0]);
+      const updatedCvIds = [...(userDoc.cv_id || []), cvId];
+      const updatedUserDoc = JSON.stringify({
+        ...userDoc,
+        cv_id: updatedCvIds,
+      });
+      await this.userCollection.update({
+        ids: [userResult.ids[0]],
+        documents: [updatedUserDoc],
+        metadatas: [{ email: uploaderEmail }],
+      });
+
+      this.logger.log(`Updated user ${uploaderEmail} with cvId ${cvId}`);
       // Convert PDF to text and store chunks
       const text = await this.extractTextFromPdf(filePath);
       this.logger.log(`Extracted text length: ${text.length} characters`);
@@ -661,13 +682,6 @@ export class CvService {
     requesterRole: string,
   ): Promise<{ response: string }> {
     try {
-      if (requesterRole !== 'admin') {
-        this.logger.warn(
-          `Unauthorized global chat attempt by ${requesterEmail}`,
-        );
-        throw new ForbiddenException('Global chat is admin-only');
-      }
-
       const { message } = chatCvDto;
       this.logger.log(`Global chat request by ${requesterEmail}: ${message}`);
 
@@ -676,11 +690,23 @@ export class CvService {
       )[0];
       this.logger.log(`Generated query embedding for: ${message}`);
 
+      // Define the where clause based on user role
+      const whereClause: Where =
+        requesterRole === 'admin'
+          ? { chunkIndex: { $gt: -1 } } // Only chunks
+          : {
+              $and: [
+                { chunkIndex: { $gt: -1 } },
+                { uploadedBy: requesterEmail }, // Restrict to user's own CVs
+              ],
+            };
+      this.logger.debug(`Querying with where: ${JSON.stringify(whereClause)}`);
+
       // Query all CV chunks, limit to 50 to avoid overload
       const queryResult = await this.cvCollection.query({
         queryEmbeddings: [queryEmbedding],
         nResults: 50,
-        where: { chunkIndex: { $gt: -1 } }, // Only chunks
+        where: whereClause, // Only chunks
       });
       this.logger.debug(`Global query result: ${JSON.stringify(queryResult)}`);
 
@@ -707,6 +733,11 @@ export class CvService {
         .sort((a, b) => b.maxScore - a.maxScore)
         .slice(0, 5)
         .map((c) => c.cvId);
+
+      if (topCvIds.length === 0) {
+        this.logger.warn('No relevant CVs found');
+        return { response: 'No CVs match your query.' };
+      }
 
       // Fetch main CV documents for top CVs
       const mainCvResult = await this.cvCollection.get({
@@ -904,16 +935,7 @@ export class CvService {
     requesterRole: string,
   ): Promise<{ query: string; response: string; timestamp: string }[]> {
     try {
-      this.logger.log(
-        `Retrieving global chat history by ${requesterEmail} with role ${requesterRole}`,
-      );
-
-      if (requesterRole !== 'admin') {
-        this.logger.warn(
-          `Unauthorized global chat history access by ${requesterEmail}`,
-        );
-        throw new ForbiddenException('Global chat history is admin-only');
-      }
+      this.logger.log(`Retrieving global chat history by ${requesterEmail}`);
 
       const whereClause: Where = {
         $and: [

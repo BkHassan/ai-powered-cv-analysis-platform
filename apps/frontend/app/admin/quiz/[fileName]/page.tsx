@@ -16,7 +16,6 @@ export default function QuizGenerationPage({
 }) {
   const { fileName } = use(params);
   const [quizData, setQuizData] = useState(null);
-  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -24,15 +23,15 @@ export default function QuizGenerationPage({
       <main className="pt-24 pb-10 px-4">
         {/* Top bar with Back button */}
         <div className="flex items-center text-sm text-gray-700 mb-4 pl-9">
-        <Home className="w-5 h-5 mr-2" />
-        <Link
-          href="/admin/cvs"
-          className="flex items-center hover:text-purple-700 transition-colors"
-        >
-          <ChevronRight className="w-4 h-4 mx-2" />
-          <span className="font-semibold">Quiz</span>
-        </Link>
-      </div>
+          <Home className="w-5 h-5 mr-2" />
+          <Link
+            href="/admin/cvs"
+            className="flex items-center hover:text-purple-700 transition-colors"
+          >
+            <ChevronRight className="w-4 h-4 mx-2" />
+            <span className="font-semibold">Quiz</span>
+          </Link>
+        </div>
 
         {/* Main content */}
         <div className="container mx-auto flex items-center justify-center">
@@ -41,10 +40,8 @@ export default function QuizGenerationPage({
               fileName={fileName}
               cvId={fileName}
               onGquizGenerated={setQuizData}
-              isExpanded={isExpanded}
-              onToggleExpand={() => setIsExpanded(!isExpanded)}
             />
-            {isExpanded && !quizData && <QuizAttemptList fileName={fileName} />}
+            {!quizData && <QuizAttemptList fileName={fileName} />}
           </div>
         </div>
       </main>

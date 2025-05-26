@@ -28,16 +28,12 @@ interface GenerateQuizProps {
   fileName: string;
   cvId: string;
   onGquizGenerated: (data: any) => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
 }
 
 export function GenerateQuiz({
   fileName,
   cvId,
   onGquizGenerated,
-  isExpanded,
-  onToggleExpand,
 }: GenerateQuizProps) {
   const [questionCount, setQuestionCount] = useState("5");
   const [cvName, setCvName] = useState("");
@@ -241,24 +237,6 @@ export function GenerateQuiz({
                 {isGenerating ? "Generating..." : "Generate Quiz"}
               </Button>
             </form>
-            <div className="pt-2 mt-4 border-t">
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full flex items-center justify-between text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                onClick={onToggleExpand}
-              >
-                <span className="flex items-center">
-                  <Award className="h-4 w-4 mr-2 text-gray-400" />
-                  Quiz Attempts
-                </span>
-                {isExpanded ? (
-                  <ChevronUp className="h-4 w-4 text-gray-400" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-gray-400" />
-                )}
-              </Button>
-            </div>
           </>
         ) : (
           <div className="space-y-4">
