@@ -9,7 +9,7 @@ interface PageProps {
 export default function ChatPage({ params }: PageProps) {
   return (
     <div className="container mx-auto p-4">
-      <ChatWithCV initialFileName={`${params.fileName}.pdf`} />
+      <ChatWithCV initialFileName={params.fileName} />
     </div>
   );
 }

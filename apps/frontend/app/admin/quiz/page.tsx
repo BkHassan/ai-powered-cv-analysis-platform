@@ -66,9 +66,7 @@ export default function QuizListPage() {
             {quizzes.map((quiz) => (
               <Card key={quiz.quizId}>
                 <CardHeader>
-                  <CardTitle>
-                    Quiz for CV: {quiz.fileName}
-                  </CardTitle>
+                  <CardTitle>Quiz for CV: {quiz.fileName}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p>Created by: {quiz.createdBy}</p>

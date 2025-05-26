@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
   Logger,
   NotFoundException,
+  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
@@ -264,6 +265,7 @@ export class AuthService implements OnModuleInit {
 
       this.logger.log('Storing user in ChromaDB');
       const userId = `user_${uuidv4()}`;
+      const createdDate = new Date().toISOString();
       const userDocument = JSON.stringify({
         name,
         email,
@@ -271,6 +273,7 @@ export class AuthService implements OnModuleInit {
         cv_id: [],
         role: 'user',
         isEmailVerified: false,
+        createdDate,
       });
 
       //save the user data
@@ -337,14 +340,25 @@ export class AuthService implements OnModuleInit {
       });
 
       if (result.ids.length === 0 || !result.documents[0]) {
+        this.logger.error('No OTP found in database');
         throw new UnauthorizedException('Invalid or expired OTP');
       }
 
       const otpDoc = JSON.parse(result.documents[0]);
+      this.logger.log(`Stored OTP in database: ${otpDoc.otp}`);
+      this.logger.log(
+        `OTP expiration: ${new Date(otpDoc.expiresAt).toISOString()}`,
+      );
+      this.logger.log(`Current time: ${new Date().toISOString()}`);
+
       if (otpDoc.otp !== dto.otp) {
+        this.logger.error(
+          `OTP mismatch - Received: ${dto.otp}, Stored: ${otpDoc.otp}`,
+        );
         throw new UnauthorizedException('Invalid OTP');
       }
       if (otpDoc.expiresAt < Date.now()) {
+        this.logger.error('OTP expired');
         await this.otpTokenCollection.delete({ ids: [result.ids[0]] });
         throw new UnauthorizedException('OTP expired');
       }
@@ -393,52 +407,59 @@ export class AuthService implements OnModuleInit {
         throw new NotFoundException('User not found');
       }
 
-      this.logger.log('Generating reset token');
-      const resetToken = uuidv4();
-      const expiresAt = Date.now() + 3600000; // 1 hour expiration
-      const tokenDocument = JSON.stringify({ email, resetToken, expiresAt });
+      // Delete any existing OTP for this email
+      const existingOtp = await this.otpTokenCollection.get({
+        where: { email },
+      });
+      if (existingOtp.ids.length > 0) {
+        this.logger.log('Deleting existing OTP');
+        await this.otpTokenCollection.delete({ ids: existingOtp.ids });
+      }
 
-      this.logger.log('Storing reset token in ChromaDB');
-      await this.resetTokenCollection.add({
-        ids: [resetToken],
-        documents: [tokenDocument],
+      // Generate and store OTP
+      this.logger.log('Generating OTP');
+      const otp = this.generateOTP();
+      this.logger.log(`Generated OTP: ${otp}`);
+
+      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+      const otpDocument = JSON.stringify({
+        email,
+        otp,
+        expiresAt,
+        verified: false,
+      });
+
+      this.logger.log('Storing OTP in ChromaDB');
+      const otpId = `otp_${uuidv4()}`;
+      await this.otpTokenCollection.add({
+        ids: [otpId],
+        documents: [otpDocument],
         metadatas: [{ email }],
       });
 
-      this.logger.log('Sending reset password email');
-
-      await this.emailService.sendOtpEmail(email, resetToken);
+      // Send OTP email
+      this.logger.log('Sending OTP email');
+      await this.emailService.sendOtpEmail(email, otp);
     } catch (error) {
       this.logger.error(
-        `Forgot password failed', ${error.message}`,
-        error.message,
+        `Forgot password failed: ${error.message}`,
+        error.stack,
       );
       throw error;
     }
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
-    const { resetToken, newPassword } = resetPasswordDto;
+    const { email, otp, newPassword } = resetPasswordDto;
 
     try {
-      this.logger.log(`Validating reset token: ${resetToken}`);
-      const result = await this.resetTokenCollection.get({
-        ids: [resetToken],
-      });
+      // First verify the OTP using the existing verifyOtp function
+      await this.verifyOtp({ email, otp });
 
-      if (result.ids.length === 0 || !result.documents[0]) {
-        throw new UnauthorizedException('Invalid or expired reset token');
-      }
-
-      const tokenDoc = JSON.parse(result.documents[0]);
-      if (tokenDoc.expiresAt < Date.now()) {
-        await this.resetTokenCollection.delete({ ids: [resetToken] });
-        throw new UnauthorizedException('Reset token expired');
-      }
-
-      this.logger.log(`Finding user with email: ${tokenDoc.email}`);
+      // If OTP is valid, proceed with password reset
+      this.logger.log(`Finding user with email: ${email}`);
       const userResult = await this.userCollection.get({
-        where: { email: tokenDoc.email },
+        where: { email },
       });
 
       if (userResult.ids.length === 0 || !userResult.documents[0]) {
@@ -457,11 +478,8 @@ export class AuthService implements OnModuleInit {
       await this.userCollection.update({
         ids: [userResult.ids[0]],
         documents: [updatedUserDoc],
-        metadatas: [{ email: tokenDoc.email }],
+        metadatas: [{ email }],
       });
-
-      this.logger.log('Deleting used reset token');
-      await this.resetTokenCollection.delete({ ids: [resetToken] });
 
       this.logger.log('Password reset successfully');
     } catch (error) {
@@ -484,6 +502,104 @@ export class AuthService implements OnModuleInit {
 
     await this.userCollection.delete({ ids: result.ids });
     this.logger.log(`Deleted user with email: ${email}`);
+  }
+
+  async getAllUsers(requesterRole: string): Promise<any[]> {
+    if (requesterRole !== 'admin') {
+      this.logger.warn('Unauthorized attempt to list users');
+      throw new ForbiddenException('Only admins can view all users');
+    }
+
+    try {
+      this.logger.log('Fetching all users from ChromaDB');
+      const result = await this.userCollection.get();
+      if (!result.documents || result.documents.length === 0) {
+        this.logger.warn('No users found in userCollection');
+        return [];
+      }
+
+      const users = result.documents
+        .map((doc, index) => {
+          try {
+            const parsedDoc = JSON.parse(doc!);
+            const userId = result.ids[index];
+            const createdDate = parsedDoc.createdDate || this.inferCreatedDate(userId);
+            return {
+              id: userId,
+              name: parsedDoc.name,
+              email: parsedDoc.email,
+              role: parsedDoc.role,
+              isEmailVerified: parsedDoc.isEmailVerified,
+              cv_id: parsedDoc.cv_id || [],
+              createdDate,
+            };
+          } catch (error) {
+            this.logger.error(`Failed to parse user document ${result.ids[index]}: ${error.message}`);
+            return null;
+          }
+        })
+        .filter((user) => user !== null);
+
+      this.logger.log(`Retrieved ${users.length} users`);
+      return users;
+    } catch (error) {
+      this.logger.error(`Failed to fetch users: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateUserRole(email: string, newRole: 'user' | 'admin', requesterEmail: string, requesterRole: string): Promise<void> {
+    if (requesterRole !== 'admin') {
+      this.logger.warn(`Unauthorized role update attempt by ${requesterEmail}`);
+      throw new ForbiddenException('Only admins can update user roles');
+    }
+
+    if (email === requesterEmail && newRole === 'user') {
+      const adminCountResult = await this.userCollection.get();
+      const adminCount = adminCountResult.documents.filter((doc) => {
+        if (!doc) return false;
+        const userDoc = JSON.parse(doc);
+        return userDoc.role === 'admin';
+      }).length;
+
+      if (adminCount <= 1) {
+        this.logger.warn(`Cannot demote last admin ${email}`);
+        throw new BadRequestException('Cannot demote the last admin user');
+      }
+    }
+
+    try {
+      this.logger.log(`Updating role for ${email} to ${newRole}`);
+      const result = await this.userCollection.get({
+        where: { email },
+      });
+
+      if (result.ids.length === 0 || !result.documents[0]) {
+        throw new NotFoundException(`User with email ${email} not found`);
+      }
+
+      const userDoc = JSON.parse(result.documents[0]);
+      const updatedUserDoc = JSON.stringify({
+        ...userDoc,
+        role: newRole,
+      });
+
+      await this.userCollection.update({
+        ids: [result.ids[0]],
+        documents: [updatedUserDoc],
+        metadatas: [{ email }],
+      });
+
+      this.logger.log(`Updated role for ${email} to ${newRole}`);
+    } catch (error) {
+      this.logger.error(`Failed to update role for ${email}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  private inferCreatedDate(userId: string): string {
+    const timestamp = parseInt(userId.split('_').pop()!.slice(0, 13), 16) || Date.now();
+    return new Date(timestamp).toISOString();
   }
 
   // async debugUsers() {

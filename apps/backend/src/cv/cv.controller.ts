@@ -22,7 +22,6 @@ import { Express, Response } from 'express';
 import * as fs from 'fs';
 
 @Controller('cv')
-@UseGuards(JwtAuthGuard)
 export class CvController {
   private readonly logger = new Logger(CvController.name);
   constructor(private readonly cvService: CvService) {}
@@ -60,7 +59,57 @@ export class CvController {
     this.logger.log(`List CVs request by ${req.user.email}`);
     return this.cvService.listCvs(req.user.role, req.user.email);
   }
-  
+
+  @Post('global-chat')
+  @UseGuards(JwtAuthGuard)
+  async globalChatCv(@Body() chatCvDto: ChatCvDto, @Req() req) {
+    this.logger.log(`Global chat request by ${req.user.email}`);
+    if (!chatCvDto.message) {
+      this.logger.warn('Missing message in chatCvDto');
+      throw new BadRequestException('Message is required');
+    }
+    return this.cvService.globalChatCv(
+      chatCvDto,
+      req.user.email,
+      req.user.role,
+    );
+  }
+
+  @Get('global-chat-history')
+  @UseGuards(JwtAuthGuard)
+  async getGlobalChatHistory(@Req() req: any) {
+    const user = req.user as { email: string; role: string };
+    this.logger.log(`Global chat history request by ${user.email}`);
+    return this.cvService.getGlobalChatHistory(user.email, user.role);
+  }
+
+  @Post(':fileName/chat')
+  @UseGuards(JwtAuthGuard)
+  async chatCv(
+    @Param('fileName') fileName: string,
+    @Body() chatCvDto: ChatCvDto,
+    @Req() req,
+  ) {
+    this.logger.log(`Chat CV ${fileName} request by ${req.user.email}`);
+    if (!chatCvDto.message) {
+      this.logger.warn('Missing message in chatCvDto');
+      throw new BadRequestException('Message is required');
+    }
+    return this.cvService.chatCv(
+      fileName,
+      chatCvDto,
+      req.user.email,
+      req.user.role,
+    );
+  }
+
+  @Get(':fileName/chat-history')
+  @UseGuards(JwtAuthGuard)
+  async getChatHistory(@Param('fileName') fileName: string, @Req() req: any) {
+    const user = req.user as { email: string; role: string };
+    return this.cvService.getChatHistory(fileName, user.email, user.role);
+  }
+
   @Get(':fileName')
   @UseGuards(JwtAuthGuard)
   async getCv(
@@ -89,32 +138,5 @@ export class CvController {
     );
     await this.cvService.deleteCv(cvId);
     return { message: `CV ${cvId} deleted successfully` };
-  }
-
-  @Post(':fileName/chat')
-  @UseGuards(JwtAuthGuard)
-  async chatCv(
-    @Param('fileName') fileName: string,
-    @Body() chatCvDto: ChatCvDto,
-    @Req() req,
-  ) {
-    this.logger.log(`Chat CV ${fileName} request by ${req.user.email}`);
-    if (!chatCvDto.message) {
-      this.logger.warn('Missing message in chatCvDto');
-      throw new BadRequestException('Message is required');
-    }
-    return this.cvService.chatCv(
-      fileName,
-      chatCvDto,
-      req.user.email,
-      req.user.role,
-    );
-  }
-
-  @Get(':fileName/chat-history')
-  @UseGuards(JwtAuthGuard)
-  async getChatHistory(@Param('fileName') fileName: string, @Req() req: any) {
-    const user = req.user as { email: string; role: string };
-    return this.cvService.getChatHistory(fileName, user.email, user.role);
   }
 }

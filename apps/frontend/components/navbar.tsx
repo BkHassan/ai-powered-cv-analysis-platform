@@ -1,12 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+
+interface NavLinksProps {
+  userRole: string | null;
+  mobile?: boolean;
+  onClick?: () => void;
+}
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        setUserRole(payload.role || "user");
+      } catch (error) {
+        console.error("Error decoding token:", error);
+        setUserRole("user");
+      }
+    }
+  }, []);
 
   return (
     <nav className="bg-white/30 backdrop-blur-md text-gray-900 p-4 fixed top-0 left-0 right-0 z-10 shadow-md">
@@ -21,7 +41,7 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex space-x-6 items-center">
-          <NavLinks />
+          <NavLinks userRole={userRole} />
         </div>
 
         {/* Mobile Navigation Toggle */}
@@ -36,37 +56,58 @@ export function Navbar() {
       {/* Mobile Navigation Menu */}
       {isMenuOpen && (
         <div className="md:hidden bg-white/90 backdrop-blur-md py-4 px-6 space-y-4 shadow-md">
-          <NavLinks mobile onClick={() => setIsMenuOpen(false)} />
+          <NavLinks
+            userRole={userRole}
+            mobile
+            onClick={() => setIsMenuOpen(false)}
+          />
         </div>
       )}
     </nav>
   );
 }
 
-function NavLinks({ mobile = false, onClick = () => {} }) {
+function NavLinks({
+  userRole,
+  mobile = false,
+  onClick = () => {},
+}: NavLinksProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const links = [
     { href: "/admin", label: "Home" },
-    { href: "/admin/upload", label: "Upload" },
+    ...(userRole === "admin"
+      ? [{ href: "/admin/users", label: "Admin" }]
+      : [{ href: "/admin/upload", label: "Upload" }]),
     { href: "/admin/chat", label: "Chat" },
-    { href: "/admin/cvs", label: "List" },
+    { href: "/admin/cvs", label: "Profils" },
   ];
 
   return (
     <>
-      {links.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          className={`hover:text-purple-600 transition-colors ${
-            mobile ? "block py-2 text-lg" : "text-sm font-medium"
-          }`}
-          onClick={onClick}
-        >
-          {link.label}
-        </Link>
-      ))}
+      {links.map((link) => {
+        const isActive =
+          pathname === link.href ||
+          (link.href !== "/admin" && pathname?.startsWith(link.href));
+
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            style={{
+              fontWeight: isActive ? "700" : "500",
+              color: isActive ? "#7e22ce" : "inherit",
+            }}
+            className={`hover:text-purple-600 transition-colors ${
+              mobile ? "block py-2 text-lg" : "text-sm"
+            }`}
+            onClick={onClick}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
       <span
         onClick={() => {
           localStorage.removeItem("token");

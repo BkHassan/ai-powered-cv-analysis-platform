@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useSearchParams } from "next/navigation";
 
 type SignupFormProps = {
   onSignupSuccess: () => void;
@@ -38,6 +39,14 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
     hasNumber: false,
     hasSpecialChar: false,
   });
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const emailParam = searchParams.get("email");
+    if (emailParam) {
+      setFormData((prev) => ({ ...prev, email: emailParam }));
+    }
+  }, [searchParams]);
 
   const validatePassword = (password: string) => {
     setPasswordStrength({
@@ -191,7 +200,12 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
 
       toast.success("Email verified! Redirecting to login...");
       setTimeout(() => {
-        onSignupSuccess();
+        // Pass email to login page
+        const params = new URLSearchParams({
+          email: formData.email,
+          fromSignup: "true",
+        });
+        window.location.href = `/?${params.toString()}`;
       }, 2000);
     } catch (error: any) {
       toast.error(error.message || "Failed to verify OTP.");

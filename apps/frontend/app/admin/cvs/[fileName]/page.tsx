@@ -114,7 +114,7 @@ export default function CVDetailPage({
           <Button variant="outline" size="sm" asChild>
             <Link href="/admin/cvs">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to CV List
+              Back to Profils
             </Link>
           </Button>
           {!loading && !error && pdfUrl && (
@@ -133,7 +133,7 @@ export default function CVDetailPage({
           <div className="container mx-auto text-center py-12">
             <h2 className="text-2xl font-bold mb-2">{error}</h2>
             <Button asChild>
-              <Link href="/admin/cvs">Return to CV List</Link>
+              <Link href="/admin/cvs">Return to Profils</Link>
             </Button>
           </div>
         ) : (

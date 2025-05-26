@@ -4,7 +4,11 @@ import {
   Body,
   Delete,
   Query,
+  Get,
+  Patch,
   ValidationPipe,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
@@ -12,7 +16,7 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password';
 import { ResetPasswordDto } from './dto/reset-password';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
-
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -54,7 +58,24 @@ export class AuthController {
   }
 
   @Delete('delete')
+  @UseGuards(JwtAuthGuard)
   async deleteUser(@Query('email') email: string): Promise<void> {
     return this.authService.deleteUserByEmail(email);
+  }
+
+  @Get('users')
+  @UseGuards(JwtAuthGuard)
+  async getAllUsers(@Req() req: any): Promise<any[]> {
+    return this.authService.getAllUsers(req.user.role);
+  }
+
+  @Patch('update-role')
+  @UseGuards(JwtAuthGuard)
+  async updateUserRole(
+    @Body('email') email: string,
+    @Body('role') role: 'user' | 'admin',
+    @Req() req: any,
+  ): Promise<void> {
+    return this.authService.updateUserRole(email, role, req.user.email, req.user.role);
   }
 }

@@ -275,6 +275,27 @@ export class CvService {
       });
       this.logger.log(`Stored CV metadata for ${cvId}`);
 
+      // Update user's cv_id array in userCollection
+      const userResult = await this.userCollection.get({
+        where: { email: uploaderEmail },
+      });
+      if (userResult.ids.length === 0 || !userResult.documents[0]) {
+        this.logger.warn(`User ${uploaderEmail} not found for CV linking`);
+        throw new NotFoundException(`User ${uploaderEmail} not found`);
+      }
+      const userDoc = JSON.parse(userResult.documents[0]);
+      const updatedCvIds = [...(userDoc.cv_id || []), cvId];
+      const updatedUserDoc = JSON.stringify({
+        ...userDoc,
+        cv_id: updatedCvIds,
+      });
+      await this.userCollection.update({
+        ids: [userResult.ids[0]],
+        documents: [updatedUserDoc],
+        metadatas: [{ email: uploaderEmail }],
+      });
+
+      this.logger.log(`Updated user ${uploaderEmail} with cvId ${cvId}`);
       // Convert PDF to text and store chunks
       const text = await this.extractTextFromPdf(filePath);
       this.logger.log(`Extracted text length: ${text.length} characters`);
@@ -655,6 +676,154 @@ export class CvService {
     }
   }
 
+  async globalChatCv(
+    chatCvDto: ChatCvDto,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<{ response: string }> {
+    try {
+      const { message } = chatCvDto;
+      this.logger.log(`Global chat request by ${requesterEmail}: ${message}`);
+
+      const queryEmbedding = (
+        await this.embeddingFunction.generate([message])
+      )[0];
+      this.logger.log(`Generated query embedding for: ${message}`);
+
+      // Define the where clause based on user role
+      const whereClause: Where =
+        requesterRole === 'admin'
+          ? { chunkIndex: { $gt: -1 } } // Only chunks
+          : {
+              $and: [
+                { chunkIndex: { $gt: -1 } },
+                { uploadedBy: requesterEmail }, // Restrict to user's own CVs
+              ],
+            };
+      this.logger.debug(`Querying with where: ${JSON.stringify(whereClause)}`);
+
+      // Query all CV chunks, limit to 50 to avoid overload
+      const queryResult = await this.cvCollection.query({
+        queryEmbeddings: [queryEmbedding],
+        nResults: 50,
+        where: whereClause, // Only chunks
+      });
+      this.logger.debug(`Global query result: ${JSON.stringify(queryResult)}`);
+
+      // Group chunks by cvId
+      const cvGroups: { [cvId: string]: { doc: any; metadata: any }[] } = {};
+      queryResult.documents[0].forEach((doc, index) => {
+        const parsedDoc = JSON.parse(doc!);
+        const cvId = parsedDoc.cvId;
+        if (!cvGroups[cvId]) cvGroups[cvId] = [];
+        cvGroups[cvId].push({
+          doc: parsedDoc,
+          metadata: queryResult.metadatas[0][index],
+        });
+      });
+
+      // Limit to top 5 CVs by max similarity score
+      const cvScores = Object.keys(cvGroups).map((cvId) => ({
+        cvId,
+        maxScore: Math.max(
+          ...cvGroups[cvId].map((_, i) => queryResult.distances![0][i] || 0),
+        ),
+      }));
+      const topCvIds = cvScores
+        .sort((a, b) => b.maxScore - a.maxScore)
+        .slice(0, 5)
+        .map((c) => c.cvId);
+
+      if (topCvIds.length === 0) {
+        this.logger.warn('No relevant CVs found');
+        return { response: 'No CVs match your query.' };
+      }
+
+      // Fetch main CV documents for top CVs
+      const mainCvResult = await this.cvCollection.get({
+        ids: topCvIds,
+        include: ['documents', 'metadatas'] as any,
+      });
+      const context = mainCvResult.documents
+        .map((doc, index) => {
+          const parsedDoc = JSON.parse(doc!);
+          const cvId = mainCvResult.ids[index];
+          const chunks = cvGroups[cvId]
+            ?.slice(0, 3) // Limit to 3 chunks per CV
+            .map((c) => `Chunk ${c.doc.chunkIndex}:\n${c.doc.text}`)
+            .join('\n\n');
+          return `CV: ${parsedDoc.name} (Uploaded by: ${
+            mainCvResult.metadatas[index]?.uploadedBy
+          })\n${chunks || 'No chunks available'}`;
+        })
+        .join('\n\n');
+
+      this.logger.log(`Global context length: ${context.length} characters`);
+
+      if (!context) {
+        this.logger.warn('No relevant CVs found');
+        return { response: 'No CVs match your query.' };
+      }
+
+      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
+      if (!openaiApiKey) {
+        this.logger.error('OPENAI_API_KEY is not defined in .env');
+        throw new Error('OPENAI_API_KEY is required');
+      }
+
+      const llm = new ChatOpenAI({
+        openAIApiKey: openaiApiKey,
+        modelName: 'gpt-4o-mini',
+        temperature: 0.7,
+      });
+
+      const promptTemplate = PromptTemplate.fromTemplate(`
+        You are an AI assistant analyzing multiple CVs. Use the following CV content to answer the user's question about skills, languages, or other qualifications across all CVs. Provide a concise list of matching CVs, including CV name and uploader email, with brief relevant details. If no CVs match, state so clearly.
+
+        CV Content:
+        {context}
+
+        User Question: {question}
+
+        Response:
+      `);
+
+      const chain = RunnableSequence.from([
+        promptTemplate,
+        llm as unknown as RunnableLike<any, any>,
+        new StringOutputParser(),
+      ]);
+
+      const response = await chain.invoke({
+        context,
+        question: message,
+      });
+      this.logger.log(`Global chat response: ${response}`);
+
+      const chatId = `chat_global_${Date.now()}`;
+      const chatDocument = JSON.stringify({
+        cvId: 'global',
+        userEmail: requesterEmail,
+        query: message,
+        response,
+        timestamp: new Date().toISOString(),
+      });
+      const chatEmbedding = queryEmbedding;
+      await this.chatHistoryCollection.add({
+        ids: [chatId],
+        documents: [chatDocument],
+        metadatas: [{ cvId: 'global', userEmail: requesterEmail }],
+        embeddings: [chatEmbedding],
+      });
+      this.logger.log(`Stored global chat entry ${chatId}`);
+
+      return { response };
+    } catch (error) {
+      this.logger.error('Global chat failed', error.stack, error.message);
+      throw error;
+    }
+  }
+
   async getChatHistory(
     fileName: string,
     requesterEmail: string,
@@ -756,6 +925,81 @@ export class CvService {
       this.logger.error(
         `Chat history retrieval failed for fileName ${fileName}`,
         error.stack,
+      );
+      throw error;
+    }
+  }
+
+  async getGlobalChatHistory(
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<{ query: string; response: string; timestamp: string }[]> {
+    try {
+      this.logger.log(`Retrieving global chat history by ${requesterEmail}`);
+
+      const whereClause: Where = {
+        $and: [
+          { cvId: 'global' } as Where,
+          { userEmail: requesterEmail } as Where,
+        ],
+      };
+      this.logger.debug(
+        `Querying chat_history with where: ${JSON.stringify(whereClause)}`,
+      );
+
+      const chatResult = await this.chatHistoryCollection.get({
+        where: whereClause,
+      });
+      this.logger.debug(
+        `Global chat history query result: ${JSON.stringify(chatResult)}`,
+      );
+
+      if (!chatResult.documents || chatResult.documents.length === 0) {
+        this.logger.debug('No global chat history found');
+        return [];
+      }
+
+      const chatHistory = chatResult.documents
+        .map((doc) => {
+          try {
+            const parsedDoc = JSON.parse(doc!);
+            return {
+              query: parsedDoc.query,
+              response: parsedDoc.response,
+              timestamp: parsedDoc.timestamp,
+            };
+          } catch (parseError) {
+            this.logger.error(
+              `Failed to parse global chat document: ${doc}`,
+              parseError.stack,
+            );
+            return null;
+          }
+        })
+        .filter(
+          (
+            entry,
+          ): entry is {
+            query: string;
+            response: string;
+            timestamp: string;
+          } => entry !== null,
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
+
+      this.logger.log(
+        `Retrieved ${chatHistory.length} global chat entries for ${requesterEmail}`,
+      );
+
+      return chatHistory;
+    } catch (error) {
+      this.logger.error(
+        `Global chat history retrieval failed`,
+        error.stack,
+        error.message,
       );
       throw error;
     }
