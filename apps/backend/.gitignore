@@ -1,0 +1,30 @@
+# Build artifacts
+dist/
+build/
+out/
+*.js
+*.js.map
+*.d.ts
+Cvfiles/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+
+# Testing and coverage
+coverage/
+.nyc_output/
+
+# TypeScript cache
+.tsbuildinfo
+
+# Local development
+node_modules/

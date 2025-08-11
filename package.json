@@ -1,0 +1,31 @@
+{
+  "name": "ai_cv",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "libs/*"
+  ],
+  "scripts": {
+    "dev": "docker-compose up --build",
+    "backend:dev": "pnpm --filter backend start:dev",
+    "build": "pnpm --filter backend build",
+    "start:prod": "pnpm --filter backend start:prod"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0"
+  },
+  "dependencies": {
+    "@langchain/openai": "^0.5.8",
+    "@nestjs/axios": "^3.0.0",
+    "@nestjs/config": "^3.0.0",
+    "@nestjs/jwt": "^10.0.0",
+    "@nestjs/passport": "^10.0.0",
+    "@nestjs/platform-express": "^11.0.20",
+    "axios": "^1.6.0",
+    "bcrypt": "^5.1.0",
+    "chromadb": "^1.10.5",
+    "passport-jwt": "^4.0.0",
+    "uuid": "^9.0.0"
+  }
+}
