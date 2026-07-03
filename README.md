@@ -144,6 +144,7 @@ The application is organized into independent backend modules responsible for au
 
 The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze resumes and provide context-aware responses.
 
+
 ```text
           PDF Resume
                │
@@ -175,6 +176,7 @@ The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze 
         ▼               ▼
   Chat Response    Quiz Generation
 ```
+---
 
 ### Pipeline Overview
 
@@ -189,6 +191,8 @@ The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze 
 ---
 ## 🛠️ Technology Stack
 
+<div align="center"> 
+  
 | Layer | Technologies |
 |--------|--------------|
 | **Frontend** | Next.js, React, Tailwind CSS, TypeScript |
@@ -200,6 +204,8 @@ The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze 
 | **Email Service** | SendGrid |
 | **Validation** | class-validator, DTOs |
 | **Development Tools** | Docker, Git, GitHub, VS Code |
+
+</div>
 
 ---
 
@@ -315,10 +321,14 @@ pnpm run dev
 
 ### Access the Application
 
+<div align="center"> 
+  
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:3000 |
 | Backend API | http://localhost:3003 |
+
+</div>
 
 ---
 
@@ -387,7 +397,8 @@ Administrators can:
 ## 📡 REST API
 
 ### 🔐 Authentication
-
+<div align="center"> 
+  
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/auth/signup` | Register a new account |
@@ -398,10 +409,14 @@ Administrators can:
 | GET | `/auth/users` | Retrieve all users *(Admin)* |
 | PATCH | `/auth/users/:id/role` | Update user role *(Admin)* |
 
+</div>
+
 ---
 
 ### 📄 CV Management
 
+<div align="center"> 
+  
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/cv/upload` | Upload a resume |
@@ -410,10 +425,14 @@ Administrators can:
 | POST | `/cv/global-chat` | Chat across all uploaded CVs |
 | DELETE | `/cv/:id` | Delete a resume |
 
+</div>
+
 ---
 
 ### 📝 Quiz
 
+<div align="center"> 
+  
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/quiz/generate` | Generate an AI interview quiz |
@@ -421,6 +440,8 @@ Administrators can:
 | POST | `/quiz/submit` | Submit quiz answers |
 | GET | `/quiz/results/:quizId` | Retrieve quiz results |
 | GET | `/quiz/attempts/:quizId` | Retrieve quiz attempts |
+
+</div>
 
 ---
 
@@ -435,6 +456,7 @@ Authorization: Bearer <access_token>
 
 ## 🔄 Request Lifecycle
 
+ 
 ```text
 Recruiter
      │
@@ -605,12 +627,16 @@ The platform incorporates several security mechanisms to protect user accounts a
 
 ## 🧠 AI Models
 
+<div align="center"> 
+  
 | Model | Purpose |
 |--------|---------|
 | **OpenAI GPT-4o-mini** | CV analysis, context-aware conversations, and interview quiz generation |
 | **Google Gemini Embeddings** | Semantic embedding generation for Retrieval-Augmented Generation (RAG) |
 | **LangChain** | Prompt orchestration, retrieval pipeline, and LLM integration |
 | **ChromaDB** | Vector storage and semantic similarity search |
+
+</div>
 
 ### AI Workflow
 
@@ -640,6 +666,8 @@ The platform incorporates several security mechanisms to protect user accounts a
 
 ## 🚀 Future Improvements
 
+<div align="center"> 
+  
 | Status | Feature |
 |--------|----------|
 | 🔄 | Job Description ↔ CV Matching |
@@ -651,10 +679,14 @@ The platform incorporates several security mechanisms to protect user accounts a
 | 🔄 | Multi-LLM Support |
 | 🔄 | Cloud Deployment & CI/CD |
 
+</div>
+
 ---
 
 ## 👥 Contributing
 
+<div align="center"> 
+  
 <table>
 <tr>
 <td align="center">
@@ -674,19 +706,29 @@ AI Engineer • Full-Stack Developer
 
 Special thanks to the open-source community and the creators of the technologies that made this project possible.
 
+</div>
+
 ---
 
 ## 📄 License
 
+<div align="center"> 
+  
 This project is licensed under the **MIT License**.
 
 Feel free to use, modify, and distribute this project in accordance with the terms of the license.
 
 See the [LICENSE](LICENSE) file for more information.
 
+</div>
+
 ----
 ## ⭐ Support
 
+<div align="center"> 
+  
 If you found this project helpful, consider giving it a ⭐ on GitHub.
 
 It helps others discover the project and motivates future improvements.
+
+</div>
