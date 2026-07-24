@@ -26,22 +26,26 @@ import { RunnableLike } from '@langchain/core/runnables';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
-  private readonly client: GoogleGenerativeAI;
+  private readonly client: GoogleGenerativeAI | null;
 
   constructor(configService: ConfigService) {
     const GEMINI_API_KEY = configService.get<string>('GEMINI_API_KEY');
     if (!GEMINI_API_KEY) {
-      this.logger.error('GEMINI_API_KEY is not defined in .env');
-      throw new Error('GEMINI_API_KEY is required');
+      this.logger.warn('GEMINI_API_KEY is not defined in .env — embedding features disabled');
+      this.client = null;
+      return;
     }
     this.client = new GoogleGenerativeAI(GEMINI_API_KEY);
     this.logger.log('Gemini client initialized successfully');
   }
 
   async generate(texts: string[]): Promise<number[][]> {
+    if (!this.client) {
+      throw new Error('GEMINI_API_KEY is required for embeddings');
+    }
     try {
       const model = this.client.getGenerativeModel({
-        model: 'text-embedding-004',
+        model: 'gemini-embedding-001',
       });
       const embeddings: number[][] = [];
       for (const text of texts) {
@@ -431,7 +435,44 @@ export class CvService {
     }
   }
 
-  async deleteCv(cvId: string): Promise<void> {
+  async updateCvName(
+    cvId: string,
+    name: string,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<void> {
+    const trimmedName = name?.trim();
+    if (!trimmedName) {
+      throw new BadRequestException('CV title is required');
+    }
+
+    const result = await this.cvCollection.get({ ids: [cvId] });
+    if (result.ids.length === 0 || !result.documents[0]) {
+      throw new NotFoundException('CV not found');
+    }
+
+    const metadata = result.metadatas[0] || {};
+    if (
+      requesterRole !== 'admin' &&
+      metadata.uploadedBy !== requesterEmail
+    ) {
+      throw new ForbiddenException('You cannot edit this CV');
+    }
+
+    const cvDoc = JSON.parse(result.documents[0]);
+    await this.cvCollection.update({
+      ids: [cvId],
+      documents: [JSON.stringify({ ...cvDoc, name: trimmedName })],
+      metadatas: [metadata],
+    });
+    this.logger.log(`Updated CV ${cvId} title to ${trimmedName}`);
+  }
+
+  async deleteCv(
+    cvId: string,
+    requesterEmail: string,
+    requesterRole: string,
+  ): Promise<void> {
     try {
       this.logger.log(`Deleting CV ${cvId}`);
       const result = await this.cvCollection.get({ ids: [cvId] });
@@ -439,6 +480,12 @@ export class CvService {
       if (result.ids.length === 0 || !result.documents[0]) {
         this.logger.warn(`CV ${cvId} not found`);
         throw new NotFoundException('CV not found');
+      }
+      if (
+        requesterRole !== 'admin' &&
+        result.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        throw new ForbiddenException('You cannot delete this CV');
       }
 
       const cvDoc = JSON.parse(result.documents[0]);
@@ -581,6 +628,14 @@ export class CvService {
       this.logger.log(
         `Chat request for CV ${cvId} (fileName: ${fileName}) by ${requesterEmail} with role ${requesterRole}`,
       );
+
+      const mainCv = await this.cvCollection.get({ ids: [cvId] });
+      if (
+        requesterRole !== 'admin' &&
+        mainCv.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        throw new ForbiddenException('You cannot chat with this CV');
+      }
 
       const result = await this.cvCollection.get({ where: { cvId } });
       if (result.ids.length === 0 || !result.documents[0]) {

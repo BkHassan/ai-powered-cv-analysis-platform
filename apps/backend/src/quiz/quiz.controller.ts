@@ -37,13 +37,13 @@ export class QuizController {
       throw new BadRequestException('fileName is required');
     }
     if (
-      body.questionCount &&
+      body.questionCount !== undefined &&
       (body.questionCount < 1 || body.questionCount > 20)
     ) {
       this.logger.warn(`Invalid questionCount: ${body.questionCount}`);
       throw new BadRequestException('questionCount must be between 1 and 20');
     }
-    if (body.timeLimit && body.timeLimit < 60) {
+    if (body.timeLimit !== undefined && body.timeLimit < 60) {
       this.logger.warn(`Invalid timeLimit: ${body.timeLimit}`);
       throw new BadRequestException('timeLimit must be at least 60 seconds');
     }
@@ -55,6 +55,13 @@ export class QuizController {
       body.questionCount || 5,
       body.timeLimit,
     );
+  }
+
+  @Get('list')
+  @UseGuards(JwtAuthGuard)
+  async getAllQuizzes(@Request() req: any) {
+    this.logger.log(`Get all quizzes by ${req.user.email}`);
+    return this.quizService.getAllQuizzes(req.user.email, req.user.role);
   }
 
   @Get(':quizId')
@@ -92,7 +99,12 @@ export class QuizController {
     @Query('token') token: string,
   ) {
     this.logger.log(`Submit quiz answers for ${quizId}`);
-    if (!body.answers || !body.timeTaken) {
+    if (
+      !body.answers ||
+      Object.keys(body.answers).length === 0 ||
+      !Number.isFinite(body.timeTaken) ||
+      body.timeTaken < 0
+    ) {
       this.logger.warn('Missing answers or timeTaken in request body');
       throw new BadRequestException('Answers and timeTaken are required');
     }
@@ -131,9 +143,16 @@ export class QuizController {
 
   @Get('skills/:fileName')
   @UseGuards(JwtAuthGuard)
-  async getCvSkills(@Param('fileName') fileName: string) {
+  async getCvSkills(
+    @Param('fileName') fileName: string,
+    @Request() req: any,
+  ) {
     this.logger.log(`Get CV skills for ${fileName}`);
-    return this.quizService.getCvSkills(fileName);
+    return this.quizService.getCvSkills(
+      fileName,
+      req.user.email,
+      req.user.role,
+    );
   }
 
   @Get('cv/:fileName')
@@ -166,10 +185,4 @@ export class QuizController {
     );
   }
 
-  @Get('list')
-  @UseGuards(JwtAuthGuard)
-  async getAllQuizzes(@Request() req: any) {
-    this.logger.log(`Get all quizzes by ${req.user.email}`);
-    return this.quizService.getAllQuizzes(req.user.email, req.user.role);
-  }
 }

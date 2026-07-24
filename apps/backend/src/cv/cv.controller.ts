@@ -12,6 +12,7 @@ import {
   Logger,
   Res,
   Delete,
+  Patch,
 } from '@nestjs/common';
 import { CvService } from './cv.service';
 // import { UploadCvDto } from './dto/upload-cv';
@@ -136,7 +137,23 @@ export class CvController {
     this.logger.log(
       `Received delete request for CV ${cvId} from ${req.user.email}`,
     );
-    await this.cvService.deleteCv(cvId);
+    await this.cvService.deleteCv(cvId, req.user.email, req.user.role);
     return { message: `CV ${cvId} deleted successfully` };
+  }
+
+  @Patch(':cvId')
+  @UseGuards(JwtAuthGuard)
+  async updateCVName(
+    @Param('cvId') cvId: string,
+    @Body('name') name: string,
+    @Req() req: any,
+  ) {
+    await this.cvService.updateCvName(
+      cvId,
+      name,
+      req.user.email,
+      req.user.role,
+    );
+    return { message: 'CV title updated successfully', name: name.trim() };
   }
 }

@@ -2,7 +2,7 @@
   "name": "backend",
   "version": "1.0.0",
   "scripts": {
-    "build": "next dev -- -H 0.0.0.0",
+    "build": "nest build",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js"
   },

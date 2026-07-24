@@ -31,7 +31,7 @@ export class EmailService {
     this.logger.log('Nodemailer transporter initialized');
   }
 
-  async sendOtpEmail(to: string, otp: string): Promise<void> {
+  async sendOtpEmail(to: string, otp: string): Promise<boolean> {
     try {
       await this.transporter.sendMail({
         from: `"CV App" <${this.configService.get<string>('SMTP_USER')}>`,
@@ -47,9 +47,13 @@ export class EmailService {
         `,
       });
       this.logger.log(`OTP email sent to ${to}`);
+      return true;
     } catch (error) {
-      this.logger.error(`Failed to send OTP email to ${to}`, error.message);
-      throw new Error('Failed to send OTP email');
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to send OTP email to ${to} (signup/auth will continue): ${message}`,
+      );
+      return false;
     }
   }
 }

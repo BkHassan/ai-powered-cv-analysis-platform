@@ -1,83 +1,26 @@
-# syntax=docker/dockerfile:1
-
-# Builder Stage
 FROM node:18-bullseye AS builder
 WORKDIR /app
 
-# Install build dependencies required for native modules
-RUN apt-get update && apt-get install -y \
-  build-essential \
-  python3 \
-  libvips-dev \
-  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
+RUN npm install -g @nestjs/cli
 
-# Copy package files
 COPY package.json ./
-COPY pnpm-lock.yaml ./
+RUN npm install
 
-# Install pnpm and dependencies for build
-RUN npm install -g pnpm && \
-    pnpm install --frozen-lockfile
-
-# Copy source code and build
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
-RUN pnpm run build
+RUN npm run build
 
-# Production Stage
 FROM node:18-bullseye
 ENV NODE_ENV=production
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup --system app && adduser --system --ingroup app app
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Install system dependencies required by the application
-RUN apt-get update && apt-get install -y \
-  libc6 \
-  libstdc++6 \
-  libgomp1 \
-  wget \
-  curl \
-  libssl-dev \
-  libatomic1 \
-  libprotobuf-dev \
-  libprotoc-dev \
-  liblzma-dev \
-  libzstd-dev \
-  ca-certificates \
-  build-essential \
-  python3 \
-  libvips-dev \
-  && rm -rf /var/lib/apt/lists/*
-
-# Copy package files
 COPY package.json ./
-COPY pnpm-lock.yaml ./
+RUN npm install --omit=dev
 
-# Create clean npm environment
-RUN rm -rf node_modules
-
-# Install dependencies with npm (not pnpm) to avoid conflicts
-RUN npm install -g npm@latest && \
-    # First, install chromadb-default-embed with npm
-    npm install --no-package-lock chromadb-default-embed && \
-    # Then install sharp with the right platform flags
-    npm install --no-package-lock --platform=linux --arch=x64 sharp && \
-    # Then install all dependencies
-    npm install --no-package-lock
-
-# Copy compiled code from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Fix permissions & switch user
-RUN chown -R app:app /app
-USER app
-
-# Expose and healthcheck
 EXPOSE 3003
-HEALTHCHECK --interval=30s --timeout=5s \
-  CMD wget --quiet --tries=1 --spider http://localhost:3003 || exit 1
-
-# Start the app
 CMD ["node", "dist/main.js"]

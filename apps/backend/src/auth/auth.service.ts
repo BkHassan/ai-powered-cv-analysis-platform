@@ -22,22 +22,26 @@ import { EmailService } from '../email/email.services';
 
 class GeminiEmbeddingFunction implements IEmbeddingFunction {
   private readonly logger = new Logger(GeminiEmbeddingFunction.name);
-  private readonly client: GoogleGenerativeAI;
+  private readonly client: GoogleGenerativeAI | null;
 
   constructor(configService: ConfigService) {
     const GEMINI_API_KEY = configService.get<string>('GEMINI_API_KEY');
     if (!GEMINI_API_KEY) {
-      this.logger.error('GEMINI_API_KEY is not defined in .env');
-      throw new Error('GEMINI_API_KEY is required');
+      this.logger.warn('GEMINI_API_KEY is not defined in .env — embedding features disabled');
+      this.client = null;
+      return;
     }
     this.client = new GoogleGenerativeAI(GEMINI_API_KEY);
     this.logger.log('Gemini client initialized successfully');
   }
 
   async generate(texts: string[]): Promise<number[][]> {
+    if (!this.client) {
+      throw new Error('GEMINI_API_KEY is required for embeddings');
+    }
     try {
       const model = this.client.getGenerativeModel({
-        model: 'text-embedding-004',
+        model: 'gemini-embedding-001',
       });
       const embeddings: number[][] = [];
       for (const text of texts) {
@@ -105,6 +109,12 @@ export class AuthService implements OnModuleInit {
   async onModuleInit() {
     try {
       await this.initializeCollections();
+      if (!this.configService.get<string>('GEMINI_API_KEY')) {
+        this.logger.warn(
+          'GEMINI_API_KEY not set — skipping admin user bootstrap until configured',
+        );
+        return;
+      }
       await this.ensureAdminUser();
       // await this.debugUsers();
     } catch (error) {
@@ -185,7 +195,9 @@ export class AuthService implements OnModuleInit {
         password: hashedPassword,
         cv_id: [],
         role: 'admin',
+        tier: 'Premium',
         isEmailVerified: true,
+        createdDate: new Date().toISOString(),
       });
 
       this.logger.log('Storing admin user in ChromaDB');
@@ -261,7 +273,12 @@ export class AuthService implements OnModuleInit {
       });
 
       this.logger.log('Sending OTP email');
-      await this.emailService.sendOtpEmail(email, otp);
+      const emailSent = await this.emailService.sendOtpEmail(email, otp);
+      if (!emailSent) {
+        this.logger.warn(
+          `OTP email could not be sent to ${email}; user account will still be created`,
+        );
+      }
 
       this.logger.log('Storing user in ChromaDB');
       const userId = `user_${uuidv4()}`;
@@ -272,6 +289,7 @@ export class AuthService implements OnModuleInit {
         password: hashedPassword,
         cv_id: [],
         role: 'user',
+        tier: 'Free',
         isEmailVerified: false,
         createdDate,
       });
@@ -285,7 +303,13 @@ export class AuthService implements OnModuleInit {
       this.logger.log(`User stored successfully: ${userId}`);
 
       this.logger.log('Generating JWT');
-      const payload = { sub: userId, email };
+      const payload = {
+        sub: userId,
+        email,
+        role: 'user',
+        tier: 'Free',
+        emailVerified: false,
+      };
       const accessToken = this.jwtService.sign(payload);
 
       return { accessToken };
@@ -322,7 +346,13 @@ export class AuthService implements OnModuleInit {
       }
 
       this.logger.log('Generating JWT for login');
-      const payload = { sub: result.ids[0], email, role: userDoc.role };
+      const payload = {
+        sub: result.ids[0],
+        email,
+        role: userDoc.role,
+        tier: userDoc.tier || 'Free',
+        emailVerified: true,
+      };
       const accessToken = this.jwtService.sign(payload);
 
       return { accessToken };
@@ -439,7 +469,12 @@ export class AuthService implements OnModuleInit {
 
       // Send OTP email
       this.logger.log('Sending OTP email');
-      await this.emailService.sendOtpEmail(email, otp);
+      const emailSent = await this.emailService.sendOtpEmail(email, otp);
+      if (!emailSent) {
+        this.logger.warn(
+          `OTP email could not be sent to ${email}; password reset OTP is stored but email delivery failed`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Forgot password failed: ${error.message}`,
@@ -491,7 +526,11 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async deleteUserByEmail(email: string): Promise<void> {
+  async deleteUserByEmail(email: string, requesterRole: string): Promise<void> {
+    if (requesterRole !== 'admin') {
+      throw new ForbiddenException('Only admins can delete users');
+    }
+
     const result = await this.userCollection.get({
       where: { email },
     });
@@ -529,6 +568,7 @@ export class AuthService implements OnModuleInit {
               name: parsedDoc.name,
               email: parsedDoc.email,
               role: parsedDoc.role,
+              tier: parsedDoc.tier || 'Free',
               isEmailVerified: parsedDoc.isEmailVerified,
               cv_id: parsedDoc.cv_id || [],
               createdDate,
@@ -552,6 +592,9 @@ export class AuthService implements OnModuleInit {
     if (requesterRole !== 'admin') {
       this.logger.warn(`Unauthorized role update attempt by ${requesterEmail}`);
       throw new ForbiddenException('Only admins can update user roles');
+    }
+    if (!['user', 'admin'].includes(newRole)) {
+      throw new BadRequestException('Role must be user or admin');
     }
 
     if (email === requesterEmail && newRole === 'user') {
@@ -597,8 +640,47 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private inferCreatedDate(userId: string): string {
-    const timestamp = parseInt(userId.split('_').pop()!.slice(0, 13), 16) || Date.now();
+  async updateUserTier(
+    email: string,
+    tier: 'Free' | 'Premium',
+    requesterRole: string,
+  ): Promise<void> {
+    if (requesterRole !== 'admin') {
+      throw new ForbiddenException('Only admins can update user tiers');
+    }
+    if (!['Free', 'Premium'].includes(tier)) {
+      throw new BadRequestException('Tier must be Free or Premium');
+    }
+
+    const result = await this.userCollection.get({ where: { email } });
+    if (result.ids.length === 0 || !result.documents[0]) {
+      throw new NotFoundException(`User with email ${email} not found`);
+    }
+
+    const userDoc = JSON.parse(result.documents[0]);
+    await this.userCollection.update({
+      ids: [result.ids[0]],
+      documents: [JSON.stringify({ ...userDoc, tier })],
+      metadatas: [{ email }],
+    });
+    this.logger.log(`Updated tier for ${email} to ${tier}`);
+  }
+
+  private inferCreatedDate(userId: string): string | null {
+    const suffix = userId.split('_').pop() ?? '';
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        suffix,
+      );
+    if (isUuid) {
+      return null;
+    }
+
+    const timestamp = parseInt(suffix.slice(0, 13), 16);
+    if (Number.isNaN(timestamp) || timestamp < 1_000_000_000_000) {
+      return null;
+    }
+
     return new Date(timestamp).toISOString();
   }
 

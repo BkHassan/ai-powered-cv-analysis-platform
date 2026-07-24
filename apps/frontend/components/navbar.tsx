@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 interface NavLinksProps {
   userRole: string | null;
@@ -14,6 +14,7 @@ interface NavLinksProps {
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userTier, setUserTier] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -21,6 +22,7 @@ export function Navbar() {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]));
         setUserRole(payload.role || "user");
+        setUserTier(payload.tier || "Free");
       } catch (error) {
         console.error("Error decoding token:", error);
         setUserRole("user");
@@ -41,6 +43,11 @@ export function Navbar() {
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex space-x-6 items-center">
+          {userRole !== "admin" && userTier && (
+            <span className="rounded-full bg-purple-100 px-3 py-1 text-sm font-semibold text-purple-700">
+              {userTier}
+            </span>
+          )}
           <NavLinks userRole={userRole} />
         </div>
 
@@ -72,7 +79,6 @@ function NavLinks({
   mobile = false,
   onClick = () => {},
 }: NavLinksProps) {
-  const router = useRouter();
   const pathname = usePathname();
 
   const links = [
@@ -111,8 +117,8 @@ function NavLinks({
       <span
         onClick={() => {
           localStorage.removeItem("token");
-          router.push("/");
           onClick();
+          window.location.assign("/");
         }}
         className={`cursor-pointer hover:text-purple-600 transition-colors ${
           mobile ? "block py-2 text-lg" : "text-sm font-medium"

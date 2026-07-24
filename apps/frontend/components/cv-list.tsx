@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Search,
   WandSparkles,
+  Pencil,
 } from "lucide-react";
 import { useCVs } from "@/hooks/useCVs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +42,40 @@ interface CVCardProps {
 function CVCard({ cv, onDelete }: CVCardProps) {
   const [quizId, setQuizId] = useState<string | undefined>(undefined);
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
+  const [displayName, setDisplayName] = useState(cv.name);
+  const [draftName, setDraftName] = useState(cv.name);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSaveTitle = async () => {
+    const nextName = draftName.trim();
+    if (!nextName) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${cv.realId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: nextName }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to update CV title");
+      }
+      setDisplayName(nextName);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   useEffect(() => {
     const fetchQuizzes = async () => {
@@ -77,10 +112,29 @@ function CVCard({ cv, onDelete }: CVCardProps) {
   return (
     <Card className="overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-105 bg-white/90 backdrop-blur-sm border border-purple-100">
       <CardHeader className="text-white px-3 py-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-gray-700 text-base flex items-center gap-2">
-          <User size={18} />
-          {cv.name} <span className="text-sm opacity-75">(#{cv.indexId})</span>
-        </CardTitle>
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="CV title"
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              className="h-8 text-gray-900"
+            />
+            <Button
+              size="sm"
+              onClick={handleSaveTitle}
+              disabled={isSaving || !draftName.trim()}
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        ) : (
+          <CardTitle className="text-gray-700 text-base flex items-center gap-2">
+            <User size={18} />
+            {displayName}{" "}
+            <span className="text-sm opacity-75">(#{cv.indexId})</span>
+          </CardTitle>
+        )}
         <div className="flex gap-1">
           {!isLoadingQuizzes && quizId && (
             <QuizResults quizId={quizId} simple />
@@ -105,6 +159,18 @@ function CVCard({ cv, onDelete }: CVCardProps) {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Edit CV title"
+            onClick={() => {
+              setDraftName(displayName);
+              setIsEditing(true);
+            }}
+          >
+            <Pencil className="h-3.5 w-3.5 mr-1" />
+            Edit title
+          </Button>
           <Button
             variant="outline"
             size="sm"

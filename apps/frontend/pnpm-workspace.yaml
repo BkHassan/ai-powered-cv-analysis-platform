@@ -1,9 +1,11 @@
-packages:
-  - apps/*
-
 allowBuilds:
   '@swc/core': true
-  bcrypt: true
   canvas: true
   sharp: true
   unrs-resolver: true
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - canvas
+  - sharp
+  - unrs-resolver

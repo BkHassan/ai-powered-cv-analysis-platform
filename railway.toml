@@ -1,0 +1,12 @@
+# Deploy the backend service from this repo on Railway.
+# Create a second service using image: chromadb/chroma:latest for ChromaDB.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/backend/Dockerfile"
+watchPatterns = ["apps/backend/**"]
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+healthcheckPath = "/health"
+healthcheckTimeout = 300

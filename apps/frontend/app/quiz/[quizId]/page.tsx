@@ -59,6 +59,7 @@ export default function QuizPage({
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [showRules, setShowRules] = useState(true);
   const [rulesAccepted, setRulesAccepted] = useState(false);
@@ -524,11 +525,13 @@ export default function QuizPage({
   };
 
   const handleAnswerChange = (questionId: string, value: string) => {
+    setSubmissionError(null);
     setAnswers((prev) => ({ ...prev, [questionId]: parseInt(value) }));
   };
 
   const handleSubmit = async () => {
     if (Object.keys(answers).length !== questions.length) {
+      setSubmissionError("Please answer all questions");
       showToastWithCooldown(
         "Please answer all questions",
         "warning",
@@ -549,6 +552,7 @@ export default function QuizPage({
       return;
     }
     setLoading(true);
+    setSubmissionError(null);
     try {
       const timeTaken =
         timeLimit !== null && timeLeft !== null ? timeLimit - timeLeft : 0;
@@ -577,6 +581,7 @@ export default function QuizPage({
       );
     } catch (err: any) {
       console.error("Error submitting quiz:", err);
+      setSubmissionError(err.message || "Failed to submit quiz");
       showToastWithCooldown(
         err.message || "Failed to submit quiz",
         "error",
@@ -589,7 +594,16 @@ export default function QuizPage({
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      {quizStarted ? (
+      {!loading && error && !quizStarted ? (
+        <Card className="w-full max-w-2xl">
+          <CardHeader>
+            <CardTitle>Quiz unavailable</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-500">{error}</p>
+          </CardContent>
+        </Card>
+      ) : quizStarted ? (
         <Card className="w-full max-w-2xl quiz-content">
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -642,6 +656,7 @@ export default function QuizPage({
                   <div key={question.id} className="space-y-2">
                     <p className="font-medium">{question.text}</p>
                     <RadioGroup
+                      value={answers[question.id]?.toString()}
                       onValueChange={(value) =>
                         handleAnswerChange(question.id, value)
                       }
@@ -664,6 +679,11 @@ export default function QuizPage({
                     </RadioGroup>
                   </div>
                 ))}
+                {submissionError && (
+                  <p role="alert" className="text-sm font-medium text-red-600">
+                    {submissionError}
+                  </p>
+                )}
                 <Button
                   onClick={handleSubmit}
                   disabled={loading || timeLeft === 0 || submitted}
@@ -677,7 +697,7 @@ export default function QuizPage({
       ) : null}
 
       <Dialog
-        open={!loading && showRules && !quizStarted}
+        open={!loading && !error && showRules && !quizStarted}
         onOpenChange={() => {}}
         modal={true}
       >

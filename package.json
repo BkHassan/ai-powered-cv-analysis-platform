@@ -10,10 +10,13 @@
     "dev": "docker-compose up --build",
     "backend:dev": "pnpm --filter backend start:dev",
     "build": "pnpm --filter backend build",
-    "start:prod": "pnpm --filter backend start:prod"
+    "start:prod": "pnpm --filter backend start:prod",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test tests/flawless-app-flow.spec.ts --project=chromium"
   },
   "devDependencies": {
-    "@nestjs/cli": "^10.0.0"
+    "@nestjs/cli": "^10.0.0",
+    "@playwright/test": "^1.61.1"
   },
   "dependencies": {
     "@langchain/openai": "^0.5.8",

@@ -12,7 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2, Users } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Search, Trash2, Users } from "lucide-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -21,9 +22,10 @@ interface User {
   name: string;
   email: string;
   role: "user" | "admin";
+  tier: "Free" | "Premium";
   isEmailVerified: boolean;
   cv_id: string[];
-  createdDate: string;
+  createdDate: string | null;
 }
 
 export function UserManagementPanel() {
@@ -31,6 +33,7 @@ export function UserManagementPanel() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -156,6 +159,41 @@ export function UserManagementPanel() {
     }
   };
 
+  const handleUpdateTier = async (
+    email: string,
+    tier: "Free" | "Premium"
+  ) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/update-tier`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, tier }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setUsers((currentUsers) =>
+        currentUsers.map((user) =>
+          user.email === email ? { ...user, tier } : user
+        )
+      );
+      toast.success(`User ${email} tier updated to ${tier}`);
+    } catch (error) {
+      console.error("Error updating tier:", error);
+      toast.error("Failed to update user tier. Please try again.");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[300px] bg-white">
@@ -168,6 +206,14 @@ export function UserManagementPanel() {
     return null;
   }
 
+  const filteredUsers = users.filter((user) => {
+    const query = searchTerm.toLowerCase();
+    return (
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    );
+  });
+
   return (
     <Card className="w-full shadow-xl shadow-purple-300/30">
       <CardHeader>
@@ -177,7 +223,16 @@ export function UserManagementPanel() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {users.length === 0 ? (
+        <div className="relative mb-5">
+          <Input
+            placeholder="Search users by name or email..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="pr-10"
+          />
+          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        </div>
+        {filteredUsers.length === 0 ? (
           <div className="text-center text-muted-foreground h-[300px] flex items-center justify-center">
             <p>No users found</p>
           </div>
@@ -188,6 +243,7 @@ export function UserManagementPanel() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Tier</TableHead>
                 <TableHead>Created Date</TableHead>
                 <TableHead>Email Verified</TableHead>
                 <TableHead>CVs</TableHead>
@@ -195,13 +251,16 @@ export function UserManagementPanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell>{user.name}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{user.role}</TableCell>
+                  <TableCell>{user.tier || "Free"}</TableCell>
                   <TableCell>
-                    {new Date(user.createdDate).toLocaleDateString()}
+                    {user.createdDate
+                      ? new Date(user.createdDate).toLocaleDateString()
+                      : "—"}
                   </TableCell>
                   <TableCell>{user.isEmailVerified ? "Yes" : "No"}</TableCell>
                   <TableCell>{user.cv_id.length}</TableCell>
@@ -233,6 +292,22 @@ export function UserManagementPanel() {
                       }
                     >
                       {user.role === "admin" ? "Remove Admin" : "Make Admin"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        handleUpdateTier(
+                          user.email,
+                          (user.tier || "Free") === "Premium"
+                            ? "Free"
+                            : "Premium"
+                        )
+                      }
+                    >
+                      {(user.tier || "Free") === "Premium"
+                        ? "Make Free"
+                        : "Make Premium"}
                     </Button>
                   </TableCell>
                 </TableRow>

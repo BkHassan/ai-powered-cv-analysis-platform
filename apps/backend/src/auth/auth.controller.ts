@@ -59,8 +59,11 @@ export class AuthController {
 
   @Delete('delete')
   @UseGuards(JwtAuthGuard)
-  async deleteUser(@Query('email') email: string): Promise<void> {
-    return this.authService.deleteUserByEmail(email);
+  async deleteUser(
+    @Query('email') email: string,
+    @Req() req: any,
+  ): Promise<void> {
+    return this.authService.deleteUserByEmail(email, req.user.role);
   }
 
   @Get('users')
@@ -77,5 +80,15 @@ export class AuthController {
     @Req() req: any,
   ): Promise<void> {
     return this.authService.updateUserRole(email, role, req.user.email, req.user.role);
+  }
+
+  @Patch('update-tier')
+  @UseGuards(JwtAuthGuard)
+  async updateUserTier(
+    @Body('email') email: string,
+    @Body('tier') tier: 'Free' | 'Premium',
+    @Req() req: any,
+  ): Promise<void> {
+    return this.authService.updateUserTier(email, tier, req.user.role);
   }
 }

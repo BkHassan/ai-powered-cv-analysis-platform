@@ -68,11 +68,22 @@ export class QuizService {
 
   async getCvSkills(
     fileName: string,
+    requesterEmail: string,
+    requesterRole: string,
   ): Promise<{ skills: string[]; level: string }> {
     try {
       this.logger.log(`Extracting skills for fileName: ${fileName}`);
 
       const cvId = await this.cvService.resolveFileNameToCvId(fileName);
+      const mainCv = await this.cvService['cvCollection'].get({
+        ids: [cvId],
+      });
+      if (
+        requesterRole !== 'admin' &&
+        mainCv.metadatas[0]?.uploadedBy !== requesterEmail
+      ) {
+        throw new ForbiddenException('You cannot inspect this CV');
+      }
 
       const result = await this.cvService['cvCollection'].get({
         where: { cvId },
@@ -250,7 +261,6 @@ export class QuizService {
       id: string;
       text: string;
       options: string[];
-      correct: number;
     }[];
   }> {
     try {
@@ -291,7 +301,11 @@ export class QuizService {
         this.logger.log(`Extracted email: ${extractedEmail}`);
       }
 
-      const skillsResult = await this.getCvSkills(fileName);
+      const skillsResult = await this.getCvSkills(
+        fileName,
+        requesterEmail,
+        requesterRole,
+      );
       const { skills, level } = skillsResult;
 
       if (!skills || skills.length === 0) {
@@ -469,7 +483,11 @@ export class QuizService {
         quizId: quizDoc.quizId,
         cvId: quizDoc.cvId,
         fileName: quizDoc.fileName,
-        questions: quizDoc.questions,
+        questions: quizDoc.questions.map((question) => ({
+          id: question.id,
+          text: question.text,
+          options: question.options,
+        })),
         completedAt: quizDoc.completedAt || undefined,
         candidateEmail: quizDoc.candidateEmail || '',
         timeLimit: quizDoc.timeLimit,
