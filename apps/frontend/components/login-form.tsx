@@ -74,6 +74,8 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(formData),
+          // Idle hosting tiers can stall for minutes before answering.
+          signal: AbortSignal.timeout(60000),
         }
       );
 
@@ -128,7 +130,12 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
       window.location.href = "/admin";
     } catch (error) {
       console.error("Error:", error);
-      toast.error("An unexpected error occurred. Please try again.");
+      const msg =
+        error instanceof Error && error.name === "TimeoutError"
+          ? "The server took too long to respond. It may be waking up — please try again."
+          : "Could not reach the server. Please check your connection and try again.";
+      setErrorMessage(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }

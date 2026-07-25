@@ -17,7 +17,7 @@ services:
     command: pnpm start:dev
 
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.23
     ports:
       - "8000:8000"
     volumes:
