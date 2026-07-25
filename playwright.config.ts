@@ -41,8 +41,9 @@ export default defineConfig({
       // Hits the real deployed frontend and backend, so it is opt-in only.
       name: "deployed",
       testMatch: deployedSpec,
-      // Cold starts on free hosting tiers outlast the default budget.
-      timeout: 300_000,
+      // Cold starts on free hosting tiers outlast the default budget, and the
+      // duplicate-email case pays for two full signups.
+      timeout: 480_000,
       use: { ...devices["Desktop Chrome"] },
     },
     {

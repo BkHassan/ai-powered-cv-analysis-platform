@@ -18,14 +18,20 @@ export class EmailService {
       throw new Error('SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS must be defined in .env');
     }
 
+    const port = Number(smtpPort);
     this.transporter = nodemailer.createTransport({
       host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
+      port,
+      secure: port === 465,
       auth: {
         user: smtpUser,
         pass: smtpPass,
       },
+      // Without these, a blocked SMTP port stalls on nodemailer's ~2 minute
+      // defaults and signup waits the whole time before answering.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
 
     this.logger.log('Nodemailer transporter initialized');
@@ -34,7 +40,12 @@ export class EmailService {
   async sendOtpEmail(to: string, otp: string): Promise<boolean> {
     try {
       await this.transporter.sendMail({
-        from: `"CV App" <${this.configService.get<string>('SMTP_USER')}>`,
+        // SMTP_USER is the literal "apikey" for the SendGrid relay, which is not
+        // a deliverable address; the sender identity is a separate setting.
+        from: `"CV App" <${
+          this.configService.get<string>('SENDGRID_FROM_EMAIL') ??
+          this.configService.get<string>('SMTP_USER')
+        }>`,
         to,
         subject: 'Your OTP Code',
         html: `

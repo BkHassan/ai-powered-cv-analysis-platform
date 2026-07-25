@@ -17,6 +17,9 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 // that is far slower than any warm request.
 const COLD_START_MS = 240_000;
 const REMOTE_ACTION_MS = 120_000;
+// Signup fans out to embeddings, the vector store and an SMTP send, so it is
+// far slower than a plain read.
+const SIGNUP_MS = 180_000;
 
 function uniqueEmail() {
   return `e2e.${Date.now()}.${Math.floor(Math.random() * 10_000)}@example.com`;
@@ -27,7 +30,7 @@ async function signUpFresh(page: import("@playwright/test").Page, email: string)
   await fillSignup(page, { email });
   await page.getByRole("button", { name: "Sign up" }).click();
   await expect(page.getByText("Enter OTP")).toBeVisible({
-    timeout: REMOTE_ACTION_MS,
+    timeout: SIGNUP_MS,
   });
 }
 
@@ -106,12 +109,16 @@ test.describe("Deployed authentication", () => {
     });
 
     await openLogin(page);
-    await page.getByLabel("Email").fill("not-an-email");
+    const email = page.getByLabel("Email");
+    await email.fill("not-an-email");
     await page.getByLabel("Password").fill("Whatever1!");
     await page.getByRole("button", { name: "Log in" }).click();
 
-    await expect(page.getByText("Please enter a valid email address").first())
-      .toBeVisible();
+    // The input is type=email, so the browser blocks submission itself and the
+    // component never gets to render its own message.
+    await expect
+      .poll(() => email.evaluate((node: HTMLInputElement) => node.checkValidity()))
+      .toBe(false);
     expect(loginCalls).toBe(0);
   });
 
@@ -159,7 +166,7 @@ test.describe("Deployed authentication", () => {
     await page.getByRole("button", { name: "Sign up" }).click();
 
     await expect(page.getByText(/already exists/i).first()).toBeVisible({
-      timeout: REMOTE_ACTION_MS,
+      timeout: SIGNUP_MS,
     });
   });
 
