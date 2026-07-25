@@ -69,6 +69,29 @@ test.describe("Authentication", () => {
       .toBe(token);
   });
 
+  test("offers the signup form when the account does not exist", async ({
+    page,
+  }) => {
+    await mockApi(page, {
+      "POST /auth/login": {
+        status: 401,
+        body: { message: "User not found" },
+      },
+    });
+    await openLogin(page);
+    await page.getByLabel("Email").fill("missing@example.com");
+    await page.getByLabel("Password").fill(TEST_USER.password);
+    await page.getByRole("button", { name: "Log in" }).click();
+
+    // Redirecting to /signup used to land on the Next.js 404 page, since login
+    // and signup are both served from "/".
+    await expect(
+      page.getByRole("heading", { name: "Create an account" }),
+    ).toBeVisible();
+    await expect(page.getByText("This page could not be found")).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe("/");
+  });
+
   test("rejects a signup password that misses requirements", async ({
     page,
   }) => {
