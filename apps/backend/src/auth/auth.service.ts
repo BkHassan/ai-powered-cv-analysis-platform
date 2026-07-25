@@ -107,23 +107,37 @@ export class AuthService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    try {
-      await this.initializeCollections();
-      if (!this.configService.get<string>('GEMINI_API_KEY')) {
-        this.logger.warn(
-          'GEMINI_API_KEY not set — skipping admin user bootstrap until configured',
-        );
+    // Never block startup on ChromaDB: hosts that sleep idle services answer the
+    // first request with an HTML splash page, which the client cannot parse.
+    void this.bootstrapCollections();
+  }
+
+  private async bootstrapCollections(maxAttempts = 12) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.initializeCollections();
+        if (!this.configService.get<string>('GEMINI_API_KEY')) {
+          this.logger.warn(
+            'GEMINI_API_KEY not set — skipping admin user bootstrap until configured',
+          );
+          return;
+        }
+        await this.ensureAdminUser();
         return;
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          this.logger.error(
+            `ChromaDB unreachable after ${maxAttempts} attempts — authentication will fail until it is restored`,
+            error.message,
+          );
+          return;
+        }
+        const delayMs = Math.min(15000, attempt * 3000);
+        this.logger.warn(
+          `ChromaDB not ready (attempt ${attempt}/${maxAttempts}); retrying in ${delayMs}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-      await this.ensureAdminUser();
-      // await this.debugUsers();
-    } catch (error) {
-      this.logger.error(
-        `Failed to ensure admin user on startup',
-        ${error.message}`,
-        error.message,
-      );
-      throw error;
     }
   }
 
