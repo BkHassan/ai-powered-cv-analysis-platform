@@ -216,7 +216,7 @@ function ChatWithCVContent({
           } else if (response.status === 401) {
             toast.error("Session expired. Please log in again.");
             localStorage.removeItem("token");
-            router.push("/login");
+            router.push("/");
             return;
           }
           throw new Error(`Failed to fetch chat history: ${errorText}`);

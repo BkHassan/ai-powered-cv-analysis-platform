@@ -7,6 +7,8 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  HttpException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
 import { JwtService } from '@nestjs/jwt';
@@ -329,7 +331,13 @@ export class AuthService implements OnModuleInit {
       return { accessToken };
     } catch (error) {
       this.logger.error(`Signup failed', ${error.message}`, error.message);
-      throw error;
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      // Embedding and vector-store failures otherwise surface as an opaque 500.
+      throw new ServiceUnavailableException(
+        `Account creation is currently unavailable: ${error.message}`,
+      );
     }
   }
 

@@ -87,11 +87,7 @@ export function LoginForm({ onUserNotFound }: { onUserNotFound: () => void }) {
             "No account found with this email. Would you like to sign up?";
           setErrorMessage(msg);
           toast.error(msg);
-          // Redirect to signup with email parameter
-          const params = new URLSearchParams({
-            email: email,
-          });
-          window.location.href = `/signup?${params.toString()}`;
+          onUserNotFound();
           return;
         }
 

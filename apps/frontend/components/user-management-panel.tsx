@@ -41,7 +41,7 @@ export function UserManagementPanel() {
         const token = localStorage.getItem("token");
         if (!token) {
           toast.error("Please log in to access user management");
-          router.push("/login");
+          router.push("/");
           return;
         }
 
