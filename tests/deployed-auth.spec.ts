@@ -183,9 +183,18 @@ test.describe("Deployed authentication", () => {
       page.getByText("Please verify your email with the OTP sent to your inbox.")
         .first(),
     ).toBeVisible({ timeout: REMOTE_ACTION_MS });
-    await expect
-      .poll(() => page.evaluate(() => localStorage.getItem("token")))
-      .toBeNull();
+
+    // Signup issues a token so the client can post the OTP, so the guarantee to
+    // assert is that the token unlocks nothing until the email is verified.
+    const token = await page.evaluate(() => localStorage.getItem("token"));
+    expect(token).toBeTruthy();
+    expect(JSON.parse(atob(token!.split(".")[1])).emailVerified).toBe(false);
+
+    const api = await page.request.get(`${API_URL}/cv`, {
+      headers: { authorization: `Bearer ${token}` },
+      timeout: REMOTE_ACTION_MS,
+    });
+    expect(api.status()).toBe(401);
   });
 
   test("stays on the OTP step after a wrong code", async ({ page }) => {
