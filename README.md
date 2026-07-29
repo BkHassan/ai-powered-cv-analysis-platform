@@ -1,8 +1,8 @@
 ﻿<div align="center">
 
-### ≡اجû AI-Powered CV Analysis Platform
+### AI-Powered CV Analysis Platform
 
-### Intelligent Resume Analysis ظت RAG Chat ظت AI Quiz Generation ظت Semantic Search
+### Intelligent Resume Analysis • RAG Chat • AI Quiz Generation • Semantic Search
 
 <p>
 An end-to-end recruitment platform that leverages Large Language Models and Retrieval-Augmented Generation (RAG) to analyze resumes, chat with candidate profiles, and automatically generate technical assessments.
@@ -36,31 +36,29 @@ An end-to-end recruitment platform that leverages Large Language Models and Retr
 
 ---
 
-### ≡اôّ Table of Contents
+## Table of Contents
 
-- [Overview](#-overview)
-- [Problem Statement](#-problem-statement)
-- [Solution](#-solution)
-- [Key Features](#-key-features)
-- [System Architecture](#-system-architecture)
-- [AI Pipeline](#-ai-pipeline)
-- [Technology Stack](#-technology-stack)
-- [Project Structure](#-project-structure)
-- [Screenshots](#-screenshots)
-- [Installation](#-installation)
-- [Usage](#-usage)
-- [API Documentation](#-api-documentation)
-- [Database Design](#-database-design)
-- [Security](#-security)
-- [Challenges & Solutions](#-challenges--solutions)
-- [Roadmap](#-roadmap)
-- [Future Improvements](#-future-improvements)
-- [Contributing](#-contributing)
-- [License](#-license)
-  
+- [Overview](#overview)
+- [Problem Statement](#problem-statement)
+- [Solution](#solution)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+- [AI Pipeline](#ai-pipeline)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [Installation](#installation)
+- [Usage](#usage)
+- [API Documentation](#api-documentation)
+- [Database Design](#database-design)
+- [Security](#security)
+- [Challenges & Solutions](#challenges--solutions)
+- [Future Improvements](#future-improvements)
+- [Contributing](#contributing)
+- [License](#license)
+
 ---
 
-### ≡اôû Overview
+## Overview
 
 The **AI-Powered CV Analysis Platform** is an intelligent recruitment platform designed to streamline the candidate screening process using Artificial Intelligence.
 
@@ -70,7 +68,7 @@ By combining semantic search, Large Language Models, and modern web technologies
 
 ---
 
-### ظإù Problem Statement
+## Problem Statement
 
 Recruitment teams often receive hundreds of resumes for a single job opening. Reviewing each CV manually is time-consuming, repetitive, and makes it difficult to consistently identify the most relevant candidates.
 
@@ -80,7 +78,7 @@ These challenges slow down the hiring process and reduce overall recruitment eff
 
 ---
 
-### ≡اْة Solution
+## Solution
 
 This platform leverages Artificial Intelligence and Retrieval-Augmented Generation (RAG) to automate and enhance key stages of the recruitment process.
 
@@ -88,97 +86,95 @@ The system allows recruiters to upload resumes, extract and index their content 
 
 By integrating semantic search, AI-powered reasoning, and modern backend architecture, the platform provides recruiters with faster access to relevant information while reducing manual effort throughout the hiring workflow.
 
-----
-
-### ظ£ذ Key Features
-
-- ≡اô Upload and analyze PDF resumes
-- ≡اجû Chat with CVs using Retrieval-Augmented Generation (RAG)
-- ≡ادب Generate AI-powered technical quizzes
-- ≡اôè Manage candidates through an admin dashboard
-- ≡ا¤ Secure authentication with JWT and role-based access control
-- ≡اôد Email verification and quiz sharing
-- ظأة Fast semantic search using vector embeddings
- 
 ---
 
-### ≡اùي╕ System Architecture
+## Key Features
+
+- Upload and analyze PDF resumes
+- Chat with CVs using Retrieval-Augmented Generation (RAG)
+- Generate AI-powered technical quizzes
+- Manage candidates through an admin dashboard
+- Secure authentication with JWT and role-based access control
+- Email verification and quiz sharing
+- Fast semantic search using vector embeddings
+
+---
+
+## System Architecture
 
 The platform follows a modular **monorepo architecture**, separating the frontend and backend while integrating AI services, vector search, and authentication into a scalable recruitment platform.
 
 ```text
-                               ظ¤îظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤
-                               ظ¤é        Recruiter        ظ¤é
-                               ظ¤¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤شظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ء
-                                            ظ¤é
-                                            ظû╝
-                             ظ¤îظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤
-                             ظ¤é     Next.js Frontend       ظ¤é
-                             ظ¤é  React ظت Tailwind CSS      ظ¤é
-                             ظ¤¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤شظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ء
-                                          ظ¤é REST API
-                                          ظû╝
-                        ظ¤îظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤
-                        ظ¤é        NestJS Backend API          ظ¤é
-                        ظ¤¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤شظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤شظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ء
-                                ظ¤é          ظ¤é
-                 ظ¤îظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ء          ظ¤¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤
-                 ظû╝                                        ظû╝
-         Authentication                          AI Services
-       JWT ظت OTP ظت Roles                    CV & Quiz Modules
-                 ظ¤é                                        ظ¤é
-                 ظ¤é                                        ظû╝
-                 ظ¤é                          OpenAI GPT-4o-mini
-                 ظ¤é                          Google Gemini Embeddings
-                 ظ¤é
-                 ظû╝
-         ظ¤îظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤
-         ظ¤é    ChromaDB      ظ¤é
-         ظ¤é  Vector Database ظ¤é
-         ظ¤¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ء
+                               +-------------------------+
+                               |        Recruiter        |
+                               +------------+------------+
+                                            |
+                                            v
+                             +------------------------------+
+                             |     Next.js Frontend         |
+                             |  React • Tailwind CSS        |
+                             +--------------+---------------+
+                                            | REST API
+                                            v
+                        +----------------------------------------+
+                        |        NestJS Backend API              |
+                        +--------+---------------+---------------+
+                                 |               |
+                 +---------------+               +---------------+
+                 v                                               v
+         Authentication                                  AI Services
+       JWT • OTP • Roles                            CV & Quiz Modules
+                 |                                               |
+                 |                                               v
+                 |                               OpenAI GPT-4o-mini
+                 |                               Google Gemini Embeddings
+                 |
+                 v
+         +------------------+
+         |    ChromaDB      |
+         |  Vector Database |
+         +------------------+
 ```
 
 The application is organized into independent backend modules responsible for authentication, CV management, AI-powered chat, and quiz generation. Candidate resumes are transformed into vector embeddings and stored in ChromaDB, enabling semantic search and Retrieval-Augmented Generation (RAG) for accurate AI responses.
 
 ---
 
-### ≡اجû AI Pipeline
+## AI Pipeline
 
 The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze resumes and provide context-aware responses.
 
-
 ```text
           PDF Resume
-               ظ¤é
-               ظû╝
+               |
+               v
       Text Extraction
-               ظ¤é
-               ظû╝
+               |
+               v
       Text Chunking
-               ظ¤é
-               ظû╝
+               |
+               v
    Gemini Embedding Model
-               ظ¤é
-               ظû╝
+               |
+               v
   Store Embeddings in ChromaDB
-               ظ¤é
-               ظû╝
+               |
+               v
      Semantic Similarity Search
-               ظ¤é
-               ظû╝
+               |
+               v
      Relevant Context Retrieval
-               ظ¤é
-               ظû╝
+               |
+               v
         Prompt Construction
-               ظ¤é
-               ظû╝
+               |
+               v
         OpenAI GPT-4o-mini
-               ظ¤é
-        ظ¤îظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤┤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤ظ¤
-        ظû╝               ظû╝
+               |
+        +------+------+
+        v             v
   Chat Response    Quiz Generation
 ```
----
 
 ### Pipeline Overview
 
@@ -190,11 +186,13 @@ The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze 
 6. Retrieve the most relevant chunks for each user query.
 7. Enrich prompts with retrieved context.
 8. Generate accurate AI responses or technical interview quizzes using OpenAI.
----
-## ≡اؤبي╕ Technology Stack
 
-<div align="center"> 
-  
+---
+
+## Technology Stack
+
+<div align="center">
+
 | Layer | Technologies |
 |--------|--------------|
 | **Frontend** | Next.js, React, Tailwind CSS, TypeScript |
@@ -211,7 +209,7 @@ The platform follows a Retrieval-Augmented Generation (RAG) pipeline to analyze 
 
 ---
 
-## ≡اأ Installation
+## Installation
 
 ### Prerequisites
 
@@ -230,8 +228,9 @@ Before getting started, make sure you have:
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/BkHassan/ai-powered-cv-analysis-platform.git
-cd ai-powered-cv-analysis-platform
+git clone https://github.com/saad-allah/craftmind.git
+cd craftmind
+git checkout develop
 ```
 
 ---
@@ -253,7 +252,7 @@ apps/backend/.env
 apps/frontend/.env.local
 ```
 
-Backend
+**Backend** (`apps/backend/.env` or root `.env` for Docker):
 
 ```env
 # AI Services
@@ -282,49 +281,60 @@ ADMIN_PASSWORD=
 ADMIN_FIRST_NAME=
 ADMIN_LAST_NAME=
 
-# Frontend URL
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:3000
+PORT=3003
 ```
 
-Frontend
+**Frontend** (`apps/frontend/.env.local`):
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3003
 ```
 
+See [`.env.example`](.env.example) for production values (Vercel + VM deployment).
+
 ---
 
 ### Run the Application
 
-#### Option 1 ظ¤ Docker (Recommended)
+#### Option 1 — Docker (Recommended for local dev)
 
 ```bash
 pnpm run dev
 ```
 
----
+#### Option 2 — Development Mode
 
-#### Option 2 ظ¤ Development Mode
-
-Backend
+Backend:
 
 ```bash
 pnpm run backend:dev
 ```
 
-Frontend
+Frontend:
 
 ```bash
 cd apps/frontend
 pnpm run dev
 ```
 
+#### Option 3 — Production on a VM (backend + ChromaDB)
+
+```bash
+# Create .env at repo root with your secrets
+docker compose -f docker-compose.prod.yml up -d --build
+curl http://localhost:3003/health
+```
+
+ChromaDB runs on the internal Docker network only. Expose port **3003** (preferably behind HTTPS with Nginx/Caddy) and point Vercel's `NEXT_PUBLIC_API_URL` to that backend URL.
+
 ---
 
 ### Access the Application
 
-<div align="center"> 
-  
+<div align="center">
+
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:3000 |
@@ -334,11 +344,11 @@ pnpm run dev
 
 ---
 
-## ظû╢ي╕ Usage
+## Usage
 
 After launching the application, the recruitment workflow is straightforward.
 
-### 1ي╕ظâث Create an Account
+### 1. Create an Account
 
 - Register a new recruiter account
 - Verify your email using the OTP code
@@ -346,7 +356,7 @@ After launching the application, the recruitment workflow is straightforward.
 
 ---
 
-### 2ي╕ظâث Upload a Resume
+### 2. Upload a Resume
 
 Upload a candidate's PDF resume.
 
@@ -359,7 +369,7 @@ The platform automatically:
 
 ---
 
-### 3ي╕ظâث Chat with the CV
+### 3. Chat with the CV
 
 Ask natural language questions such as:
 
@@ -372,7 +382,7 @@ The system retrieves the most relevant context before generating an AI response.
 
 ---
 
-### 4ي╕ظâث Generate an AI Quiz
+### 4. Generate an AI Quiz
 
 Generate interview questions directly from the uploaded CV.
 
@@ -385,7 +395,7 @@ The platform can:
 
 ---
 
-### 5ي╕ظâث Manage Candidates
+### 5. Manage Candidates
 
 Administrators can:
 
@@ -396,11 +406,12 @@ Administrators can:
 
 ---
 
-## ≡اôة REST API
+## API Documentation
 
-### ≡ا¤ Authentication
-<div align="center"> 
-  
+### Authentication
+
+<div align="center">
+
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/auth/signup` | Register a new account |
@@ -415,10 +426,10 @@ Administrators can:
 
 ---
 
-### ≡اô CV Management
+### CV Management
 
-<div align="center"> 
-  
+<div align="center">
+
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/cv/upload` | Upload a resume |
@@ -431,10 +442,10 @@ Administrators can:
 
 ---
 
-### ≡اôإ Quiz
+### Quiz
 
-<div align="center"> 
-  
+<div align="center">
+
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/quiz/generate` | Generate an AI interview quiz |
@@ -447,145 +458,147 @@ Administrators can:
 
 ---
 
-### ≡ا¤ْ Authentication
+### Protected Endpoints
 
 Protected endpoints require a valid JWT access token.
 
 ```
 Authorization: Bearer <access_token>
 ```
+
 ---
 
-## ≡ا¤ Request Lifecycle
+## Request Lifecycle
 
- 
 ```text
 Recruiter
-     ظ¤é
-     ظû╝
+     |
+     v
 Next.js Frontend
-     ظ¤é
-     ظû╝
+     |
+     v
 NestJS REST API
-     ظ¤é
-     ظû╝
+     |
+     v
 Authentication
-     ظ¤é
-     ظû╝
+     |
+     v
 CV Processing
-     ظ¤é
-     ظû╝
+     |
+     v
 Vector Search (ChromaDB)
-     ظ¤é
-     ظû╝
+     |
+     v
 OpenAI / Gemini
-     ظ¤é
-     ظû╝
+     |
+     v
 AI Response
-     ظ¤é
-     ظû╝
+     |
+     v
 Frontend UI
 ```
 
 ---
 
-## ≡اôé Folder Structure
+## Project Structure
 
 ```text
-ai-powered-cv-analysis-platform
-ظ¤é
-ظ¤£ظ¤ظ¤ apps
-ظ¤é   ظ¤£ظ¤ظ¤ backend
-ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ src
-ظ¤é   ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ auth
-ظ¤é   ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ cv
-ظ¤é   ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ quiz
-ظ¤é   ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ email
-ظ¤é   ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ common
-ظ¤é   ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ app.module.ts
-ظ¤é   ظ¤é   ظ¤é   ظ¤¤ظ¤ظ¤ main.ts
-ظ¤é   ظ¤é   ظ¤£ظ¤ظ¤ Dockerfile
-ظ¤é   ظ¤é   ظ¤¤ظ¤ظ¤ package.json
-ظ¤é   ظ¤é
-ظ¤é   ظ¤¤ظ¤ظ¤ frontend
-ظ¤é       ظ¤£ظ¤ظ¤ app
-ظ¤é       ظ¤é   ظ¤£ظ¤ظ¤ admin
-ظ¤é       ظ¤é   ظ¤£ظ¤ظ¤ quiz
-ظ¤é       ظ¤é   ظ¤¤ظ¤ظ¤ auth
-ظ¤é       ظ¤£ظ¤ظ¤ components
-ظ¤é       ظ¤£ظ¤ظ¤ hooks
-ظ¤é       ظ¤£ظ¤ظ¤ lib
-ظ¤é       ظ¤¤ظ¤ظ¤ package.json
-ظ¤é
-ظ¤£ظ¤ظ¤ libs
-ظ¤£ظ¤ظ¤ package.json
-ظ¤£ظ¤ظ¤ pnpm-workspace.yaml
-ظ¤¤ظ¤ظ¤ README.md
+craftmind
+|
++-- apps
+|   +-- backend
+|   |   +-- src
+|   |   |   +-- auth
+|   |   |   +-- cv
+|   |   |   +-- quiz
+|   |   |   +-- email
+|   |   |   +-- common
+|   |   |   +-- app.module.ts
+|   |   |   +-- main.ts
+|   |   +-- Dockerfile
+|   |   +-- package.json
+|   |
+|   +-- frontend
+|       +-- app
+|       |   +-- admin
+|       |   +-- quiz
+|       |   +-- auth
+|       +-- components
+|       +-- hooks
+|       +-- lib
+|       +-- package.json
+|
++-- deploy
++-- package.json
++-- pnpm-workspace.yaml
++-- docker-compose.yml
++-- docker-compose.prod.yml
++-- README.md
 ```
 
 The project follows a **monorepo architecture**, separating the frontend and backend while sharing dependencies through a single workspace configuration.
 
 ---
 
-### ≡اùي╕ Database Design
+## Database Design
 
 The platform stores structured and vectorized information inside **ChromaDB**.
 
 ```text
 Users
-ظ¤é
-ظ¤£ظ¤ظ¤ id
-ظ¤£ظ¤ظ¤ name
-ظ¤£ظ¤ظ¤ email
-ظ¤£ظ¤ظ¤ role
-ظ¤¤ظ¤ظ¤ cv_ids
+|
++-- id
++-- name
++-- email
++-- role
++-- cv_ids
 
 CVs
-ظ¤é
-ظ¤£ظ¤ظ¤ id
-ظ¤£ظ¤ظ¤ filename
-ظ¤£ظ¤ظ¤ uploadedBy
-ظ¤£ظ¤ظ¤ uploadDate
-ظ¤¤ظ¤ظ¤ metadata
+|
++-- id
++-- filename
++-- uploadedBy
++-- uploadDate
++-- metadata
 
 CV Chunks
-ظ¤é
-ظ¤£ظ¤ظ¤ chunkId
-ظ¤£ظ¤ظ¤ cvId
-ظ¤£ظ¤ظ¤ text
-ظ¤£ظ¤ظ¤ embedding
-ظ¤¤ظ¤ظ¤ metadata
+|
++-- chunkId
++-- cvId
++-- text
++-- embedding
++-- metadata
 
 Chat History
-ظ¤é
-ظ¤£ظ¤ظ¤ id
-ظ¤£ظ¤ظ¤ cvId
-ظ¤£ظ¤ظ¤ question
-ظ¤£ظ¤ظ¤ answer
-ظ¤¤ظ¤ظ¤ timestamp
+|
++-- id
++-- cvId
++-- question
++-- answer
++-- timestamp
 
 Quizzes
-ظ¤é
-ظ¤£ظ¤ظ¤ quizId
-ظ¤£ظ¤ظ¤ cvId
-ظ¤£ظ¤ظ¤ questions[]
-ظ¤£ظ¤ظ¤ secureToken
-ظ¤¤ظ¤ظ¤ createdAt
+|
++-- quizId
++-- cvId
++-- questions[]
++-- secureToken
++-- createdAt
 
 Quiz Attempts
-ظ¤é
-ظ¤£ظ¤ظ¤ attemptId
-ظ¤£ظ¤ظ¤ quizId
-ظ¤£ظ¤ظ¤ score
-ظ¤£ظ¤ظ¤ timeTaken
-ظ¤¤ظ¤ظ¤ completedAt
+|
++-- attemptId
++-- quizId
++-- score
++-- timeTaken
++-- completedAt
 ```
 
 Each resume is transformed into multiple semantic chunks. Every chunk is embedded into a high-dimensional vector and indexed inside ChromaDB, enabling fast semantic retrieval for Retrieval-Augmented Generation (RAG).
 
 ---
 
-## ≡ا¤ْ Security
+## Security
 
 The platform incorporates several security mechanisms to protect user accounts and sensitive recruitment data.
 
@@ -627,10 +640,10 @@ The platform incorporates several security mechanisms to protect user accounts a
 
 ---
 
-## ≡ادب AI Models
+## AI Models
 
-<div align="center"> 
-  
+<div align="center">
+
 | Model | Purpose |
 |--------|---------|
 | **OpenAI GPT-4o-mini** | CV analysis, context-aware conversations, and interview quiz generation |
@@ -642,17 +655,17 @@ The platform incorporates several security mechanisms to protect user accounts a
 
 ### AI Workflow
 
-- ≡اô Extract text from uploaded PDF resumes
-- ظ£éي╕ Split documents into semantic chunks
-- ≡ادب Generate embeddings using Google Gemini
-- ≡اùي╕ Store vectors inside ChromaDB
-- ≡ا¤ Retrieve relevant context using semantic search
-- ≡اْش Generate accurate responses with GPT-4o-mini
-- ≡اôإ Create AI-powered technical interview quizzes
+- Extract text from uploaded PDF resumes
+- Split documents into semantic chunks
+- Generate embeddings using Google Gemini
+- Store vectors inside ChromaDB
+- Retrieve relevant context using semantic search
+- Generate accurate responses with GPT-4o-mini
+- Create AI-powered technical interview quizzes
 
 ---
 
-## ظأة Challenges & Solutions
+## Challenges & Solutions
 
 | Challenge | Solution |
 |-----------|----------|
@@ -666,29 +679,29 @@ The platform incorporates several security mechanisms to protect user accounts a
 
 ---
 
-## ≡اأ Future Improvements
+## Future Improvements
 
-<div align="center"> 
-  
+<div align="center">
+
 | Status | Feature |
 |--------|----------|
-| ≡ا¤ | Job Description ظ¤ CV Matching |
-| ≡ا¤ | AI Candidate Ranking |
-| ≡ا¤ | OCR Support for Scanned Resumes |
-| ≡ا¤ | Multilingual Resume Analysis |
-| ≡ا¤ | Recruitment Analytics Dashboard |
-| ≡ا¤ | Hybrid Search & Reranking |
-| ≡ا¤ | Multi-LLM Support |
-| ≡ا¤ | Cloud Deployment & CI/CD |
+| Planned | Job Description → CV Matching |
+| Planned | AI Candidate Ranking |
+| Planned | OCR Support for Scanned Resumes |
+| Planned | Multilingual Resume Analysis |
+| Planned | Recruitment Analytics Dashboard |
+| Planned | Hybrid Search & Reranking |
+| Planned | Multi-LLM Support |
+| Planned | Cloud Deployment & CI/CD |
 
 </div>
 
 ---
 
-## ≡اّح Contributing
+## Contributing
 
-<div align="center"> 
-  
+<div align="center">
+
 <table>
 <tr>
 <td align="center">
@@ -700,7 +713,7 @@ The platform incorporates several security mechanisms to protect user accounts a
 
 </a>
 
-AI Engineer ظت Full-Stack Developer
+AI Engineer • Full-Stack Developer
 
 </td>
 </tr>
@@ -712,10 +725,10 @@ Special thanks to the open-source community and the creators of the technologies
 
 ---
 
-## ≡اô License
+## License
 
-<div align="center"> 
-  
+<div align="center">
+
 This project is licensed under the **MIT License**.
 
 Feel free to use, modify, and distribute this project in accordance with the terms of the license.
@@ -724,12 +737,13 @@ See the [LICENSE](LICENSE) file for more information.
 
 </div>
 
-----
-## ظص Support
+---
 
-<div align="center"> 
-  
-If you found this project helpful, consider giving it a ظص on GitHub.
+## Support
+
+<div align="center">
+
+If you found this project helpful, consider giving it a star on GitHub.
 
 It helps others discover the project and motivates future improvements.
 
