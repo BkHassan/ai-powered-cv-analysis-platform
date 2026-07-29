@@ -228,9 +228,9 @@ Before getting started, make sure you have:
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/saad-allah/craftmind.git
-cd craftmind
-git checkout develop
+git clone https://github.com/BkHassan/ai-powered-cv-analysis-platform.git
+cd ai-powered-cv-analysis-platform
+git checkout main
 ```
 
 ---
@@ -503,7 +503,7 @@ Frontend UI
 ## Project Structure
 
 ```text
-craftmind
+ai-powered-cv-analysis-platform
 |
 +-- apps
 |   +-- backend
