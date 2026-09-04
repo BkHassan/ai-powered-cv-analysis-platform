@@ -44,7 +44,9 @@ The backend may sleep after idle time. If login takes ~1 minute the first time, 
 
 ## Demo
 
-[Watch the demo on Google Drive](https://drive.google.com/file/d/1jB2rL1l5l0fVNsJEpixF3nZ7EyoIISel/view?usp=sharing)
+Walkthrough of sign-in, PDF upload, chat with a CV, and quiz generation:
+
+[Watch the video demo](https://drive.google.com/file/d/1jB2rL1l5l0fVNsJEpixF3nZ7EyoIISel/view?usp=sharing)
 
 ---
 
