@@ -1,10 +1,27 @@
+# Build context for Dockerfile.backend (the repo root). The frontend has its own
+# context at apps/frontend with its own .dockerignore, so it is excluded here to
+# keep the backend context small.
+apps/frontend
+
 **/node_modules
 **/dist
 **/build
+**/.pnpm-store
+apps/backend/Cvfiles
+
 .env
-*.log
+.env.*
+!.env.*.example
+
 .git
 .gitignore
-npm-debug.log
-Dockerfile
-docker-compose.yml
+.github
+docs
+deploy
+Dockerfile*
+docker-compose*.yml
+railway.toml
+check_data.py
+README.md
+**/*.md
+**/*.log

@@ -1,0 +1,84 @@
+# Backend stack: NestJS API + ChromaDB.
+#   docker compose -f docker-compose.backend.yml up -d --build
+#
+# Nothing is published to the host: Caddy (docker-compose.proxy.yml) reaches the
+# API over the shared "edge" network. Create it once with `docker network create edge`.
+name: craftmind-backend
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    # Namespaced so it cannot collide with the image name docker-compose.yml
+    # derives for the dev build (craftmind-backend), which would let `up`
+    # silently reuse a stale dev image instead of building this one.
+    image: craftmind/backend:latest
+    container_name: backend
+    env_file:
+      - .env.backend
+    # Node as PID 1 neither forwards signals nor reaps children, which turns
+    # `compose down` into a 10s SIGKILL wait and can leave zombies behind.
+    init: true
+    volumes:
+      - cv_files:/app/dist/Cvfiles
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edge
+      - back-tier
+
+  chromadb:
+    # Pinned: the chromadb 1.x JS client speaks the /api/v1 protocol, which
+    # Chroma server removed in 1.0 (it answers those routes with 410 Gone).
+    image: chromadb/chroma:0.5.23
+    container_name: chromadb
+    init: true
+    # Deliberately not published and kept off the edge network: Chroma has no
+    # auth, so only the backend may reach it.
+    expose:
+      - "8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - CHROMA_SERVER_DB=duckdb
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test:
+        ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
+      interval: 30s
+      timeout: 15s
+      retries: 50
+      start_period: 300s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - back-tier
+
+# All application state lives in these two volumes — there is no SQL database.
+# chromadb_data holds users, CVs, chat history and quizzes; cv_files holds the
+# uploaded PDFs. Back up both.
+volumes:
+  chromadb_data:
+    driver: local
+  cv_files:
+    driver: local
+
+networks:
+  edge:
+    external: true
+  back-tier:
+    driver: bridge

@@ -9,6 +9,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Smaller Docker image: Next copies a self-contained Node server into .next/standalone
+  output: "standalone",
 }
 
 export default nextConfig

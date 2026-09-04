@@ -1,0 +1,39 @@
+name: CI
+
+# Builds both production images so a broken Dockerfile or a lockfile that has
+# drifted from package.json fails here rather than on the server.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Build backend image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  frontend:
+    name: Build frontend image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./apps/frontend
+          push: false
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.example.com
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

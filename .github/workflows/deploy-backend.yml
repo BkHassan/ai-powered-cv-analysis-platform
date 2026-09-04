@@ -1,0 +1,57 @@
+name: Deploy backend
+
+# Only the backend stack is rebuilt, so a frontend-only change never restarts
+# the API or ChromaDB.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/**"
+      - "Dockerfile.backend"
+      - "docker-compose.backend.yml"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build and restart the backend stack over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.VPS_APP_DIR }}"
+            git fetch --prune origin main
+            git reset --hard origin/main
+            docker compose -f docker-compose.backend.yml up -d --build
+            docker image prune -f
+
+      - name: Wait for the health check to pass
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            for i in $(seq 1 60); do
+              if docker exec backend curl -fsS http://127.0.0.1:3003/health >/dev/null 2>&1; then
+                echo "backend healthy"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "backend did not become healthy" >&2
+            docker compose -f "${{ secrets.VPS_APP_DIR }}/docker-compose.backend.yml" logs --tail 100 backend >&2 || true
+            exit 1

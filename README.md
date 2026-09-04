@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # MindCraft — AI-Powered CV Analysis Platform
 
@@ -95,7 +95,9 @@ PDF  →  extract + chunk  →  Gemini embeddings  →  ChromaDB
 
 ## Run locally
 
-**Need:** Node 18+, pnpm, Docker Desktop, keys for Gemini, OpenAI, and (optional) SendGrid.
+**Need:** Node 22+, pnpm, Docker Desktop, and keys for Gemini, OpenAI and SendGrid.
+All three are required — the API aborts startup if the SendGrid/SMTP variables
+are missing.
 
 ```bash
 git clone https://github.com/BkHassan/ai-powered-cv-analysis-platform.git
@@ -138,11 +140,77 @@ Open [http://localhost:3000](http://localhost:3000) and log in with the same adm
 ## Repo layout
 
 ```text
-apps/frontend   Next.js UI
-apps/backend    NestJS API (auth, cv, quiz, email)
-docker-compose.yml        local backend + ChromaDB
-docker-compose.prod.yml   production backend + ChromaDB
+apps/frontend   Next.js UI            (apps/frontend/Dockerfile)
+apps/backend    NestJS API            (Dockerfile.backend, at the repo root)
+deploy/         Caddyfile for the edge proxy
+
+docker-compose.yml            local dev: backend + ChromaDB
+docker-compose.backend.yml    prod: API + ChromaDB
+docker-compose.frontend.yml   prod: Next.js server
+docker-compose.proxy.yml      prod: Caddy, TLS and routing
 ```
+
+---
+
+## Deploy on a VPS
+
+Frontend and backend run as two independent stacks behind Caddy, which
+terminates TLS and routes by hostname. They deploy separately — the two only
+meet in the browser, which calls the API directly over HTTPS.
+
+```text
+Internet ──▶ Caddy :443 ──┬── app.example.com ──▶ frontend:3000
+                          └── api.example.com ──▶ backend:3003
+                                                     │  back-tier (private)
+                                                     └──▶ chromadb:8000
+```
+
+**Need:** a VPS with 4 GB RAM (a Next.js build gets OOM-killed below that),
+Docker Engine with the Compose plugin, and A records for both hostnames
+pointing at the server before you start the proxy — otherwise the Let's Encrypt
+challenge fails.
+
+**1. Clone the repo** using a read-only deploy key (repo → Settings → Deploy keys).
+
+**2. Fill in the three env files.** None are committed.
+
+```bash
+cp .env.backend.example  .env.backend    # API keys, JWT_SECRET, FRONTEND_URL
+cp .env.frontend.example .env.frontend   # public URLs, baked into the bundle
+cp .env.proxy.example    .env.proxy      # hostnames + ACME email
+```
+
+`FRONTEND_URL` is required: with it unset the API accepts requests from every
+origin. Generate `JWT_SECRET` with `openssl rand -base64 48`, and set a real
+`ADMIN_PASSWORD` — the demo credentials above are public. The SendGrid and SMTP
+variables are required too: `EmailService` and `QuizService` throw on
+construction without them, so the API will not start.
+
+**3. Bring the stacks up.** Create the shared network once, then start the
+backend first: ChromaDB has a 300s health-check grace period and the API's
+admin seeding waits on it.
+
+```bash
+docker network create edge
+pnpm deploy:backend
+pnpm deploy:frontend
+pnpm deploy:proxy
+```
+
+**4. Redeploys are automatic.** `.github/workflows/deploy-backend.yml` and
+`deploy-frontend.yml` are path-filtered, so a change under `apps/frontend/`
+never restarts the API. Both need four repository secrets: `VPS_HOST`,
+`VPS_USER`, `VPS_SSH_KEY`, `VPS_APP_DIR`.
+
+### Notes
+
+- **`NEXT_PUBLIC_*` is build-time.** Next.js inlines those values into the
+  client bundle, so changing the API URL needs an image rebuild, not a restart.
+- **ChromaDB is pinned to `0.5.23`** and is not reachable from the edge network.
+  The 1.x server dropped the `/api/v1` protocol the JS client speaks, and Chroma
+  has no authentication of its own.
+- **Back up two volumes.** There is no SQL database: `chromadb_data` holds users,
+  CVs, chat history and quizzes, and `cv_files` holds the uploaded PDFs.
 
 ---
 

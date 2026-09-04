@@ -1,0 +1,31 @@
+# Frontend stack: Next.js standalone server.
+#   docker compose -f docker-compose.frontend.yml up -d --build
+#
+# Deploys independently of the backend — the two only meet in the browser, which
+# calls NEXT_PUBLIC_API_URL directly over HTTPS.
+name: craftmind-frontend
+
+services:
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        # Read from .env.frontend at build time and inlined into the bundle.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL in .env.frontend}
+    image: craftmind/frontend:latest
+    container_name: frontend
+    # Node as PID 1 does not forward signals; without this, stopping the
+    # container falls back to SIGKILL after the grace period.
+    init: true
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edge
+
+networks:
+  edge:
+    external: true

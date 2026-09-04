@@ -1,22 +1,20 @@
 {
-  "name": "ai_cv",
+  "name": "craftmind",
   "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "apps/backend",
-    "libs/*"
-  ],
+  "packageManager": "pnpm@11.15.1",
   "scripts": {
-    "dev": "docker-compose up --build",
+    "dev": "docker compose up --build",
     "backend:dev": "pnpm --filter backend start:dev",
-    "build": "pnpm --filter backend build",
-    "start:prod": "pnpm --filter backend start:prod",
-    "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test tests/flawless-app-flow.spec.ts --project=chromium"
+    "backend:build": "pnpm --filter backend build",
+    "frontend:dev": "pnpm --filter frontend dev",
+    "frontend:build": "pnpm --filter frontend build",
+    "deploy:proxy": "docker compose -f docker-compose.proxy.yml --env-file .env.proxy up -d",
+    "deploy:backend": "docker compose -f docker-compose.backend.yml up -d --build",
+    "deploy:frontend": "docker compose -f docker-compose.frontend.yml --env-file .env.frontend up -d --build"
   },
   "devDependencies": {
-    "@nestjs/cli": "^10.0.0",
-    "@playwright/test": "^1.61.1"
+    "@nestjs/cli": "^10.0.0"
   },
   "dependencies": {
     "@langchain/openai": "^0.5.8",

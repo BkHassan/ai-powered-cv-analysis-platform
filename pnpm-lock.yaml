@@ -45,9 +45,6 @@ importers:
       '@nestjs/cli':
         specifier: ^10.0.0
         version: 10.4.9(@swc/cli@0.1.65(@swc/core@1.15.46)(chokidar@3.6.0))(@swc/core@1.15.46)(postcss@8.5.22)
-      '@playwright/test':
-        specifier: ^1.61.1
-        version: 1.61.1
 
   apps/backend:
     dependencies:
@@ -6050,6 +6047,7 @@ snapshots:
   '@playwright/test@1.61.1':
     dependencies:
       playwright: 1.61.1
+    optional: true
 
   '@popperjs/core@2.11.8': {}
 
@@ -9059,13 +9057,15 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  playwright-core@1.61.1: {}
+  playwright-core@1.61.1:
+    optional: true
 
   playwright@1.61.1:
     dependencies:
       playwright-core: 1.61.1
     optionalDependencies:
       fsevents: 2.3.2
+    optional: true
 
   pluralize@8.0.0: {}
 

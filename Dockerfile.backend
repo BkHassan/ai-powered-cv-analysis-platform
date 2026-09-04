@@ -1,27 +1,51 @@
-# Render backend build — uses repo root as Docker context
-FROM node:18-bullseye AS builder
+# syntax=docker/dockerfile:1
+# NestJS API image. Build context is the repo root so the backend can be built
+# straight from a clone: docker compose -f docker-compose.backend.yml build
+FROM node:22-bookworm-slim AS base
+RUN npm install -g pnpm@11
+# Registry fetches time out on slow or contended links; the defaults are too
+# tight for a cold install of ~600 packages.
+ENV npm_config_fetch_retries=5
+ENV npm_config_fetch_timeout=600000
+ENV npm_config_fetch_retry_maxtimeout=120000
+ENV npm_config_network_concurrency=8
 WORKDIR /app
+COPY apps/backend/package.json apps/backend/pnpm-lock.yaml apps/backend/pnpm-workspace.yaml ./
 
-RUN apt-get update && apt-get install -y build-essential python3 && rm -rf /var/lib/apt/lists/*
-RUN npm install -g @nestjs/cli
+FROM base AS prod-deps
+# node-linker=hoisted keeps node_modules a plain tree, so it survives the COPY
+# into the runtime stage without pnpm's store symlinks dangling.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --prod --frozen-lockfile \
+    --store-dir=/pnpm/store --config.node-linker=hoisted
 
-COPY apps/backend/package.json ./
-RUN npm install --legacy-peer-deps
-
+FROM base AS build
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store
 COPY apps/backend/tsconfig.json apps/backend/tsconfig.build.json apps/backend/nest-cli.json ./
 COPY apps/backend/src ./src
-RUN npm run build
+RUN pnpm build
 
-FROM node:18-bullseye
+FROM node:22-bookworm-slim AS runner
 ENV NODE_ENV=production
+ENV PORT=3003
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY apps/backend/package.json ./
-RUN npm install --omit=dev --legacy-peer-deps
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
 
-COPY --from=builder /app/dist ./dist
+# CvService resolves uploads to dist/Cvfiles; create it up front so the volume
+# mounted there inherits ownership by the unprivileged user.
+RUN mkdir -p dist/Cvfiles && chown node:node dist/Cvfiles
+USER node
 
 EXPOSE 3003
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -fsS -o /dev/null http://127.0.0.1:3003/health || exit 1
+
 CMD ["node", "dist/main.js"]

@@ -26,12 +26,11 @@ out/
 .DS_Store
 Thumbs.db
 
-# Environment files
+# Environment files — everything except the committed templates
 .env
-.env.local
-.env.development
-.env.test
-.env.production
+.env.*
+!.env.example
+!.env.*.example
 
 # IDE and editor files
 .vscode/

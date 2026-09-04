@@ -1,10 +1,11 @@
-# Deploy the backend service from this repo on Railway.
-# Create a second service using image: chromadb/chroma:latest for ChromaDB.
+# Optional: deploy the backend on Railway instead of a VPS.
+# Add a second service for the vector store using image chromadb/chroma:0.5.23 —
+# not :latest, the 1.x server dropped the /api/v1 protocol this client needs.
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "apps/backend/Dockerfile"
-watchPatterns = ["apps/backend/**"]
+dockerfilePath = "Dockerfile.backend"
+watchPatterns = ["apps/backend/**", "Dockerfile.backend"]
 
 [deploy]
 restartPolicyType = "ON_FAILURE"

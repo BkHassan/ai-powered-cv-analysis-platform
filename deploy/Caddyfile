@@ -1,0 +1,36 @@
+{
+	email {$ACME_EMAIL}
+}
+
+(hardening) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+{$APP_DOMAIN} {
+	import hardening
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+{$API_DOMAIN} {
+	import hardening
+	encode zstd gzip
+
+	# CV uploads are PDFs; Caddy's default cap is far below what a resume needs.
+	request_body {
+		max_size 25MB
+	}
+
+	reverse_proxy backend:3003 {
+		# Quiz generation and RAG chat wait on OpenAI/Gemini.
+		transport http {
+			response_header_timeout 300s
+		}
+	}
+}
