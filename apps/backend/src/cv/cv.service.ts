@@ -13,8 +13,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Express } from 'express';
 import pdfParse = require('pdf-parse');
-import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
+import { createGeminiChatModel } from '../llm/gemini-chat';
 import {
   RunnableSequence,
   RunnablePassthrough,
@@ -672,17 +672,7 @@ export class CvService {
         return { response: 'No relevant information found in the CV.' };
       }
 
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-        modelName: 'gpt-4o-mini',
-        temperature: 0.7,
-      });
+      const llm = createGeminiChatModel(this.configService, 0.7);
 
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant answering questions about a candidate's CV. Use the following CV content to provide an accurate and concise response. If the information is not available, state so clearly.
@@ -820,17 +810,7 @@ export class CvService {
         return { response: 'No CVs match your query.' };
       }
 
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-        modelName: 'gpt-4o-mini',
-        temperature: 0.7,
-      });
+      const llm = createGeminiChatModel(this.configService, 0.7);
 
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant analyzing multiple CVs. Use the following CV content to answer the user's question about skills, languages, or other qualifications across all CVs. Provide a concise list of matching CVs, including CV name and uploader email, with brief relevant details. If no CVs match, state so clearly.

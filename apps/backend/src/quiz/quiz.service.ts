@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { ChromaClient, Collection } from 'chromadb';
 import { ConfigService } from '@nestjs/config';
-import { ChatOpenAI } from '@langchain/openai';
 import { PromptTemplate } from '@langchain/core/prompts';
+import { createGeminiChatModel } from '../llm/gemini-chat';
 import {
   RunnableSequence,
   RunnablePassthrough,
@@ -107,17 +107,7 @@ export class QuizService {
 
       this.logger.debug(`Joined CV text: ${chunks.substring(0, 500)}...`);
 
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-        modelName: 'gpt-4o-mini',
-        temperature: 0.5,
-      });
+      const llm = createGeminiChatModel(this.configService, 0.5);
 
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant tasked with extracting technical skills and estimating the candidate's proficiency level from a CV. The CV text is provided below and may be in any language (e.g., English, Arabic). Identify all technical skills (e.g., programming languages, frameworks, tools, design software) mentioned explicitly or implied through experience. Estimate the overall proficiency level as "beginner", "intermediate", or "advanced" based on years of experience, project complexity, or certifications mentioned. If no clear level is indicated, default to "intermediate".
@@ -200,17 +190,7 @@ export class QuizService {
 
       this.logger.debug(`Joined CV text: ${chunks.substring(0, 500)}...`);
 
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-        modelName: 'gpt-4o-mini',
-        temperature: 0.5,
-      });
+      const llm = createGeminiChatModel(this.configService, 0.5);
 
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant tasked with extracting the candidate's email address from a CV. The CV text is provided below and may be in any language or format. Identify the email address explicitly mentioned (e.g., "hello@reallygreatsite.com") or implied (e.g., "contact: hello at reallygreatsite dot com"). Return the email as a string in standard format (e.g., "user@domain.com"). If no email is found, return an empty string.
@@ -313,17 +293,7 @@ export class QuizService {
         throw new BadRequestException('No skills found to generate a quiz');
       }
 
-      const openaiApiKey = this.configService.get<string>('OPENAI_API_KEY');
-      if (!openaiApiKey) {
-        this.logger.error('OPENAI_API_KEY is not defined in .env');
-        throw new Error('OPENAI_API_KEY is required');
-      }
-
-      const llm = new ChatOpenAI({
-        openAIApiKey: openaiApiKey,
-        modelName: 'gpt-4o-mini',
-        temperature: 0.7,
-      });
+      const llm = createGeminiChatModel(this.configService, 0.7);
 
       const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant tasked with generating a technical quiz based on a candidate's skills and proficiency level. The skills are: {skills}. The proficiency level is: {level}. Generate a quiz with {questionCount} multiple-choice questions, each with 4 options and one correct answer. The questions should be appropriate for the given proficiency level (beginner, intermediate, or advanced).
