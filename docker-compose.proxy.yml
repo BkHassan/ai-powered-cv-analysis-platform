@@ -37,5 +37,8 @@ volumes:
     driver: local
 
 networks:
+  # Must match EDGE_NETWORK in the backend/frontend stacks. Only needed when
+  # self-hosting the proxy; on Dokploy its Traefik replaces this whole stack.
   edge:
+    name: ${EDGE_NETWORK:-edge}
     external: true

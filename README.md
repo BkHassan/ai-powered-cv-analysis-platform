@@ -152,8 +152,35 @@ docker-compose.proxy.yml      prod: Caddy, TLS and routing
 
 ---
 
-## Deploy on a VPS
+## Deploy the API on Dokploy
 
+The backend ships as a self-contained stack (API + ChromaDB) that Dokploy can
+deploy straight from this repo, with the frontend staying on Vercel.
+
+1. **Compose service** → GitHub → this repo, branch `main`.
+2. **Compose Path:** `./docker-compose.backend.yml`.
+3. **Environment tab:** paste a filled-in [`.env.backend.example`](.env.backend.example).
+   Keep `CHROMADB_URL=http://chromadb:8000` and set `FRONTEND_URL` plus
+   `NEXT_PUBLIC_APP_URL` to the frontend's public URL. Leave `EDGE_NETWORK`
+   unset — it defaults to `dokploy-network`, the only network Dokploy's Traefik
+   routes to.
+4. **Domains tab:** service `backend`, port `3003`, HTTPS with Let's Encrypt.
+   Dokploy injects the Traefik labels, so no proxy service is defined in the
+   compose file.
+
+Then point the frontend's `NEXT_PUBLIC_API_URL` at the new API domain and
+redeploy it — that value is inlined at build time, so a restart is not enough.
+
+Two things to know: Traefik will not create a route for a service whose
+healthcheck is failing, and the API aborts startup when the SendGrid/SMTP
+variables are missing, so check container health first if the domain looks dead.
+ChromaDB is intentionally kept off the proxy network and gets no domain.
+
+---
+
+## Deploy on a plain VPS
+
+The alternative to Dokploy: the same stacks behind the bundled Caddy proxy.
 Frontend and backend run as two independent stacks behind Caddy, which
 terminates TLS and routes by hostname. They deploy separately — the two only
 meet in the browser, which calls the API directly over HTTPS.
@@ -175,10 +202,13 @@ challenge fails.
 **2. Fill in the three env files.** None are committed.
 
 ```bash
-cp .env.backend.example  .env.backend    # API keys, JWT_SECRET, FRONTEND_URL
+cp .env.backend.example  .env            # API keys, JWT_SECRET, FRONTEND_URL
 cp .env.frontend.example .env.frontend   # public URLs, baked into the bundle
 cp .env.proxy.example    .env.proxy      # hostnames + ACME email
 ```
+
+Set `EDGE_NETWORK=edge` in `.env` so the API publishes onto Caddy's network
+rather than Dokploy's default.
 
 `FRONTEND_URL` is required: with it unset the API accepts requests from every
 origin. Generate `JWT_SECRET` with `openssl rand -base64 48`, and set a real
@@ -196,6 +226,9 @@ pnpm deploy:backend
 pnpm deploy:frontend
 pnpm deploy:proxy
 ```
+
+(`deploy:backend` reads `.env`; the frontend and proxy stacks take their own
+`--env-file`, which is why they stay separate files.)
 
 **4. Redeploys are automatic.** `.github/workflows/deploy-backend.yml` and
 `deploy-frontend.yml` are path-filtered, so a change under `apps/frontend/`

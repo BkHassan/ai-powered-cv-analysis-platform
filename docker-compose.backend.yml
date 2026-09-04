@@ -1,9 +1,11 @@
 # Backend stack: NestJS API + ChromaDB.
-#   docker compose -f docker-compose.backend.yml up -d --build
 #
-# Nothing is published to the host: Caddy (docker-compose.proxy.yml) reaches the
-# API over the shared "edge" network. Create it once with `docker network create edge`.
-name: craftmind-backend
+# On Dokploy: Compose service, Compose Path ./docker-compose.backend.yml. Set the
+# domain in the Domains tab against service "backend", port 3003 — Dokploy injects
+# the Traefik labels and handles TLS, so no proxy service is defined here.
+#
+# On a plain VPS with docker-compose.proxy.yml instead, point the public network
+# at Caddy's:  EDGE_NETWORK=edge docker compose -f docker-compose.backend.yml up -d --build
 
 services:
   backend:
@@ -14,9 +16,10 @@ services:
     # derives for the dev build (craftmind-backend), which would let `up`
     # silently reuse a stale dev image instead of building this one.
     image: craftmind/backend:latest
-    container_name: backend
+    # No container_name: Dokploy manages container naming and a fixed name
+    # collides across deployments.
     env_file:
-      - .env.backend
+      - .env
     # Node as PID 1 neither forwards signals nor reaps children, which turns
     # `compose down` into a 10s SIGKILL wait and can leave zombies behind.
     init: true
@@ -39,9 +42,8 @@ services:
     # Pinned: the chromadb 1.x JS client speaks the /api/v1 protocol, which
     # Chroma server removed in 1.0 (it answers those routes with 410 Gone).
     image: chromadb/chroma:0.5.23
-    container_name: chromadb
     init: true
-    # Deliberately not published and kept off the edge network: Chroma has no
+    # Deliberately not published and kept off the public network: Chroma has no
     # auth, so only the backend may reach it.
     expose:
       - "8000"
@@ -78,7 +80,11 @@ volumes:
     driver: local
 
 networks:
+  # The public-facing network the reverse proxy lives on. Defaults to Dokploy's,
+  # which is the only network its Traefik will route to; override with
+  # EDGE_NETWORK=edge when fronting the stack with docker-compose.proxy.yml.
   edge:
+    name: ${EDGE_NETWORK:-dokploy-network}
     external: true
   back-tier:
     driver: bridge
