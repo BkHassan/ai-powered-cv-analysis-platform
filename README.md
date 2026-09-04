@@ -1,113 +1,98 @@
-<div align="center">
-
 # MindCraft — AI-Powered CV Analysis Platform
 
-**Upload a resume. Chat with it. Generate an interview quiz.**
+Upload a PDF resume, ask questions about the candidate, and generate an interview quiz.
 
-A recruitment tool that turns PDF CVs into searchable knowledge using embeddings, RAG chat, and AI-generated assessments.
-
-[**Live demo**](https://ai-powered-cv-analysis-platform-bac-ten.vercel.app) · [Try with demo login](#try-the-app)
-
-</div>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs" alt="Next.js" />
-  <img src="https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white" alt="NestJS" />
-  <img src="https://img.shields.io/badge/ChromaDB-vector-FF6B35" alt="ChromaDB" />
-  <img src="https://img.shields.io/badge/Gemini-embeddings-4285F4?logo=google&logoColor=white" alt="Gemini" />
-  <img src="https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?logo=openai&logoColor=white" alt="OpenAI" />
-</p>
+[Live demo](https://ai-powered-cv-analysis-platform-bac-ten.vercel.app) · [Video walkthrough](https://drive.google.com/file/d/1jB2rL1l5l0fVNsJEpixF3nZ7EyoIISel/view?usp=sharing)
 
 ---
 
-## Try the app
-
-**Demo:** [https://ai-powered-cv-analysis-platform-bac-ten.vercel.app](https://ai-powered-cv-analysis-platform-bac-ten.vercel.app)
+## Try it
 
 | | |
 |---|---|
+| **URL** | [https://ai-powered-cv-analysis-platform-bac-ten.vercel.app](https://ai-powered-cv-analysis-platform-bac-ten.vercel.app) |
 | **Email** | `admin@craftmind.local` |
 | **Password** | `Admin123!` |
 
-Use this **admin** account — it is already verified. Creating a new account may fail email OTP if SendGrid is not configured.
+Use this **admin** account (already verified). New sign-up needs a working email OTP.
 
-The backend may sleep after idle time. If login takes ~1 minute the first time, wait and retry.
+The API can take about a minute on the first request if it was idle. Wait and retry.
 
-**What to try**
+---
 
-1. Sign in with the credentials above.
+## Screenshots
+
+Drop your images in [`docs/screenshots/`](docs/screenshots/) using these names, then they show up here:
+
+| File | What to capture |
+|------|-----------------|
+| `login.png` | Sign-in screen |
+| `dashboard.png` | Dashboard (upload + chat) |
+| `chat-quiz.png` | Chat with a CV and/or quiz |
+
+![Login](docs/screenshots/login.png)
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+![Chat and quiz](docs/screenshots/chat-quiz.png)
+
+---
+
+## How to use
+
+1. Log in with the demo account.
 2. Upload a **PDF** resume.
-3. Ask questions about the candidate (skills, experience, projects).
-4. Generate an AI quiz from that CV.
+3. Open chat and ask things like: *What are the strongest skills?* *Any React experience?* *Summarize this profile.*
+4. Generate an AI quiz from that CV (multiple choice). You can send it by email if SMTP is configured.
+5. Admins can also list CVs, users, and quiz attempts from the navbar.
 
 ---
 
-## Demo
+## Tools you need (local)
 
-Walkthrough of sign-in, PDF upload, chat with a CV, and quiz generation:
-
-[Watch the video demo](https://drive.google.com/file/d/1jB2rL1l5l0fVNsJEpixF3nZ7EyoIISel/view?usp=sharing)
-
----
-
-## What it does
-
-Recruiters often scan dozens of PDFs by hand. This platform indexes each resume so you can **ask questions in natural language** and **generate interview questions** from the same document.
-
-| Feature | Detail |
-|---------|--------|
-| PDF upload | Extract text, chunk it, store embeddings |
-| Chat with a CV | RAG: retrieve relevant chunks, then answer with GPT-4o-mini |
-| Chat across CVs | Ask questions over all uploaded resumes |
-| AI quizzes | Multiple-choice questions from a CV, email to candidates, auto-score |
-| Auth | JWT, OTP email verification, admin vs user roles |
-
----
-
-## How it works
-
-```text
-PDF  →  extract + chunk  →  Gemini embeddings  →  ChromaDB
-                                              ↓
-                         recruiter question  →  retrieve context  →  GPT-4o-mini
-```
-
-- **Frontend:** Next.js (React, Tailwind) — deployed on Vercel  
-- **Backend:** NestJS — REST API (auth, CV, quiz, email)  
-- **Vectors:** ChromaDB `0.5.23` (v1 API, matches the JS client)  
-- **AI:** Gemini for embeddings, OpenAI for chat and quizzes  
+- [Node.js](https://nodejs.org/) **18+**
+- [pnpm](https://pnpm.io/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Git](https://git-scm.com/)
+- API keys: **Google Gemini** (embeddings + chat) and **SendGrid / SMTP** (app will not start without them)
 
 ---
 
 ## Run locally
-
-**Need:** Node 22+, pnpm, Docker Desktop, and keys for Gemini, OpenAI and SendGrid.
-All three are required — the API aborts startup if the SendGrid/SMTP variables
-are missing.
 
 ```bash
 git clone https://github.com/BkHassan/ai-powered-cv-analysis-platform.git
 cd ai-powered-cv-analysis-platform
 ```
 
-1. Copy [`.env.example`](.env.example) to `.env` and fill in your keys. For Docker:
+**1. Backend env** — copy [`.env.example`](.env.example) to `.env` at the repo root and fill in keys:
 
 ```env
+GEMINI_API_KEY=
+JWT_SECRET=dev-only-change-me
 CHROMADB_URL=http://chromadb:8000
 PORT=3003
 FRONTEND_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASS=
+
 ADMIN_EMAIL=admin@craftmind.local
 ADMIN_PASSWORD=Admin123!
 ```
 
-2. Frontend:
+**2. Frontend env** — `apps/frontend/.env.local`:
 
 ```env
-# apps/frontend/.env.local
 NEXT_PUBLIC_API_URL=http://localhost:3003
 ```
 
-3. Start backend + ChromaDB, then the UI:
+**3. Start** — backend + ChromaDB, then the UI:
 
 ```bash
 docker compose up --build
@@ -119,122 +104,34 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and log in with the same admin credentials.
+Open [http://localhost:3000](http://localhost:3000) and log in with `admin@craftmind.local` / `Admin123!`.
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:3003/health |
 
 ---
 
-## Repo layout
+## How to test
 
-```text
-apps/frontend   Next.js UI            (apps/frontend/Dockerfile)
-apps/backend    NestJS API            (Dockerfile.backend, at the repo root)
-deploy/         Caddyfile for the edge proxy
+No automated UI suite is required. After login:
 
-docker-compose.yml            local dev: backend + ChromaDB
-docker-compose.backend.yml    prod: API + ChromaDB
-docker-compose.frontend.yml   prod: Next.js server
-docker-compose.proxy.yml      prod: Caddy, TLS and routing
-```
+1. `http://localhost:3003/health` returns `{"status":"ok"}`.
+2. Upload a PDF and check it appears in the CV list.
+3. Ask a question in chat and get an answer grounded in that CV.
+4. Generate a quiz from the same CV.
+
+Wrong password should stay on login. An unknown email should offer sign-up, not a 404 page.
 
 ---
 
-## Deploy the API on Dokploy
+## Stack (short)
 
-The backend ships as a self-contained stack (API + ChromaDB) that Dokploy can
-deploy straight from this repo, with the frontend staying on Vercel.
-
-1. **Compose service** → GitHub → this repo, branch `main`.
-2. **Compose Path:** `./docker-compose.backend.yml`.
-3. **Environment tab:** paste a filled-in [`.env.backend.example`](.env.backend.example).
-   Keep `CHROMADB_URL=http://chromadb:8000` and set `FRONTEND_URL` plus
-   `NEXT_PUBLIC_APP_URL` to the frontend's public URL. Leave `EDGE_NETWORK`
-   unset — it defaults to `dokploy-network`, the only network Dokploy's Traefik
-   routes to.
-4. **Domains tab:** service `backend`, port `3003`, HTTPS with Let's Encrypt.
-   Dokploy injects the Traefik labels, so no proxy service is defined in the
-   compose file.
-
-Then point the frontend's `NEXT_PUBLIC_API_URL` at the new API domain and
-redeploy it — that value is inlined at build time, so a restart is not enough.
-
-Two things to know: Traefik will not create a route for a service whose
-healthcheck is failing, and the API aborts startup when the SendGrid/SMTP
-variables are missing, so check container health first if the domain looks dead.
-ChromaDB is intentionally kept off the proxy network and gets no domain.
-
----
-
-## Deploy on a plain VPS
-
-The alternative to Dokploy: the same stacks behind the bundled Caddy proxy.
-Frontend and backend run as two independent stacks behind Caddy, which
-terminates TLS and routes by hostname. They deploy separately — the two only
-meet in the browser, which calls the API directly over HTTPS.
-
-```text
-Internet ──▶ Caddy :443 ──┬── app.example.com ──▶ frontend:3000
-                          └── api.example.com ──▶ backend:3003
-                                                     │  back-tier (private)
-                                                     └──▶ chromadb:8000
-```
-
-**Need:** a VPS with 4 GB RAM (a Next.js build gets OOM-killed below that),
-Docker Engine with the Compose plugin, and A records for both hostnames
-pointing at the server before you start the proxy — otherwise the Let's Encrypt
-challenge fails.
-
-**1. Clone the repo** using a read-only deploy key (repo → Settings → Deploy keys).
-
-**2. Fill in the three env files.** None are committed.
-
-```bash
-cp .env.backend.example  .env            # API keys, JWT_SECRET, FRONTEND_URL
-cp .env.frontend.example .env.frontend   # public URLs, baked into the bundle
-cp .env.proxy.example    .env.proxy      # hostnames + ACME email
-```
-
-Set `EDGE_NETWORK=edge` in `.env` so the API publishes onto Caddy's network
-rather than Dokploy's default.
-
-`FRONTEND_URL` is required: with it unset the API accepts requests from every
-origin. Generate `JWT_SECRET` with `openssl rand -base64 48`, and set a real
-`ADMIN_PASSWORD` — the demo credentials above are public. The SendGrid and SMTP
-variables are required too: `EmailService` and `QuizService` throw on
-construction without them, so the API will not start.
-
-**3. Bring the stacks up.** Create the shared network once, then start the
-backend first: ChromaDB has a 300s health-check grace period and the API's
-admin seeding waits on it.
-
-```bash
-docker network create edge
-pnpm deploy:backend
-pnpm deploy:frontend
-pnpm deploy:proxy
-```
-
-(`deploy:backend` reads `.env`; the frontend and proxy stacks take their own
-`--env-file`, which is why they stay separate files.)
-
-**4. Redeploys are automatic.** `.github/workflows/deploy-backend.yml` and
-`deploy-frontend.yml` are path-filtered, so a change under `apps/frontend/`
-never restarts the API. Both need four repository secrets: `VPS_HOST`,
-`VPS_USER`, `VPS_SSH_KEY`, `VPS_APP_DIR`.
-
-### Notes
-
-- **`NEXT_PUBLIC_*` is build-time.** Next.js inlines those values into the
-  client bundle, so changing the API URL needs an image rebuild, not a restart.
-- **ChromaDB is pinned to `0.5.23`** and is not reachable from the edge network.
-  The 1.x server dropped the `/api/v1` protocol the JS client speaks, and Chroma
-  has no authentication of its own.
-- **Back up two volumes.** There is no SQL database: `chromadb_data` holds users,
-  CVs, chat history and quizzes, and `cv_files` holds the uploaded PDFs.
+Next.js frontend (Vercel) · NestJS API + ChromaDB (`docker-compose.yml` locally, `docker-compose.backend.yml` on Dokploy) · Gemini for embeddings, chat, and quizzes.
 
 ---
 
 ## Author
 
-[Hassan Boukatena](https://github.com/BkHassan) — AI / full-stack
-
-If this is useful, a star on the repo is appreciated.
+[Hassan Boukatena](https://github.com/BkHassan)

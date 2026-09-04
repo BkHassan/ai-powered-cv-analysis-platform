@@ -8,10 +8,7 @@
     "backend:dev": "pnpm --filter backend start:dev",
     "backend:build": "pnpm --filter backend build",
     "frontend:dev": "pnpm --filter frontend dev",
-    "frontend:build": "pnpm --filter frontend build",
-    "deploy:proxy": "docker compose -f docker-compose.proxy.yml --env-file .env.proxy up -d",
-    "deploy:backend": "docker compose -f docker-compose.backend.yml up -d --build",
-    "deploy:frontend": "docker compose -f docker-compose.frontend.yml --env-file .env.frontend up -d --build"
+    "frontend:build": "pnpm --filter frontend build"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0"

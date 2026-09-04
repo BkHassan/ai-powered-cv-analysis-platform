@@ -1,11 +1,6 @@
 # Backend stack: NestJS API + ChromaDB.
-#
-# On Dokploy: Compose service, Compose Path ./docker-compose.backend.yml. Set the
-# domain in the Domains tab against service "backend", port 3003 — Dokploy injects
-# the Traefik labels and handles TLS, so no proxy service is defined here.
-#
-# On a plain VPS with docker-compose.proxy.yml instead, point the public network
-# at Caddy's:  EDGE_NETWORK=edge docker compose -f docker-compose.backend.yml up -d --build
+# Dokploy: Compose Path ./docker-compose.backend.yml — attach a domain to
+# service "backend", port 3003. Traefik labels are injected by Dokploy.
 
 services:
   backend:
@@ -13,15 +8,10 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     # Namespaced so it cannot collide with the image name docker-compose.yml
-    # derives for the dev build (craftmind-backend), which would let `up`
-    # silently reuse a stale dev image instead of building this one.
+    # derives for the dev build (craftmind-backend).
     image: craftmind/backend:latest
-    # No container_name: Dokploy manages container naming and a fixed name
-    # collides across deployments.
     env_file:
       - .env
-    # Node as PID 1 neither forwards signals nor reaps children, which turns
-    # `compose down` into a 10s SIGKILL wait and can leave zombies behind.
     init: true
     volumes:
       - cv_files:/app/dist/Cvfiles
@@ -35,7 +25,7 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - edge
+      - dokploy-network
       - back-tier
 
   chromadb:
@@ -43,8 +33,7 @@ services:
     # Chroma server removed in 1.0 (it answers those routes with 410 Gone).
     image: chromadb/chroma:0.5.23
     init: true
-    # Deliberately not published and kept off the public network: Chroma has no
-    # auth, so only the backend may reach it.
+    # Not published: Chroma has no auth; only the backend may reach it.
     expose:
       - "8000"
     volumes:
@@ -70,9 +59,6 @@ services:
     networks:
       - back-tier
 
-# All application state lives in these two volumes — there is no SQL database.
-# chromadb_data holds users, CVs, chat history and quizzes; cv_files holds the
-# uploaded PDFs. Back up both.
 volumes:
   chromadb_data:
     driver: local
@@ -80,11 +66,7 @@ volumes:
     driver: local
 
 networks:
-  # The public-facing network the reverse proxy lives on. Defaults to Dokploy's,
-  # which is the only network its Traefik will route to; override with
-  # EDGE_NETWORK=edge when fronting the stack with docker-compose.proxy.yml.
-  edge:
-    name: ${EDGE_NETWORK:-dokploy-network}
+  dokploy-network:
     external: true
   back-tier:
     driver: bridge
