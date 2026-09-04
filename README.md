@@ -42,25 +42,9 @@ The backend may sleep after idle time. If login takes ~1 minute the first time, 
 
 ---
 
-## Screenshots
+## Demo
 
-<p align="center">
-  <img src="docs/screenshots/login.png" alt="Login screen" width="800" />
-  <br />
-  <em>Sign in</em>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="Recruiter dashboard" width="800" />
-  <br />
-  <em>Dashboard — upload CVs and start chatting</em>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/chat-quiz.png" alt="RAG chat and quiz generation" width="800" />
-  <br />
-  <em>RAG chat on a CV and AI interview quiz</em>
-</p>
+[Watch the demo on Google Drive](https://drive.google.com/file/d/1jB2rL1l5l0fVNsJEpixF3nZ7EyoIISel/view?usp=sharing)
 
 ---
 
