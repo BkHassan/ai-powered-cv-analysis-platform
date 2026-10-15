@@ -1,0 +1,354 @@
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChromaClient, Collection, IEmbeddingFunction } from 'chromadb';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { PromptTemplate } from '@langchain/core/prompts';
+import {
+  RunnableLike,
+  RunnableSequence,
+} from '@langchain/core/runnables';
+import { StringOutputParser } from '@langchain/core/output_parsers';
+import * as fs from 'fs';
+import * as path from 'path';
+import { z } from 'zod';
+import { createGeminiChatModel } from '../llm/gemini-chat';
+import {
+  average,
+  containsForbiddenPhrase,
+  keywordHitRate,
+  percentile,
+  round4,
+  splitTextIntoChunks,
+} from './eval.metrics';
+import { CaseEvalResult, EvalSummary, GoldDataset } from './eval.types';
+
+const COLLECTION_NAME = 'eval_gold';
+const EVAL_CV_ID = 'eval_cv_gold';
+const CHUNK_TOKENS = 500;
+
+const goldSchema = z.object({
+  version: z.string(),
+  description: z.string(),
+  nResults: z.number().int().positive(),
+  document: z.string().min(20),
+  cases: z
+    .array(
+      z.object({
+        id: z.string(),
+        question: z.string(),
+        relevantKeywords: z.array(z.string()),
+        answerKeywords: z.array(z.string()),
+        forbiddenPhrases: z.array(z.string()),
+        answerMatch: z.enum(['all', 'any']).optional(),
+      }),
+    )
+    .min(1),
+});
+
+const judgeSchema = z.object({
+  grounded: z.boolean(),
+  relevant: z.boolean(),
+  score: z.number().min(1).max(5),
+});
+
+class GeminiEmbeddingFunction implements IEmbeddingFunction {
+  private readonly logger = new Logger(GeminiEmbeddingFunction.name);
+  private readonly client: GoogleGenerativeAI | null;
+
+  constructor(configService: ConfigService) {
+    const apiKey = configService.get<string>('GEMINI_API_KEY');
+    this.client = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+  }
+
+  async generate(texts: string[]): Promise<number[][]> {
+    if (!this.client) {
+      throw new Error('GEMINI_API_KEY is required for embeddings');
+    }
+    const model = this.client.getGenerativeModel({
+      model: 'gemini-embedding-001',
+    });
+    const embeddings: number[][] = [];
+    for (const text of texts) {
+      const result = await model.embedContent(text);
+      embeddings.push(result.embedding.values);
+    }
+    this.logger.log(`Eval embeddings generated for ${texts.length} texts`);
+    return embeddings;
+  }
+}
+
+@Injectable()
+export class EvalService {
+  private readonly logger = new Logger(EvalService.name);
+  private readonly embeddingFunction: IEmbeddingFunction;
+  private collection: Collection | null = null;
+
+  constructor(
+    private readonly chromaClient: ChromaClient,
+    private readonly configService: ConfigService,
+  ) {
+    this.embeddingFunction = new GeminiEmbeddingFunction(configService);
+  }
+
+  async run(includeJudge = false): Promise<EvalSummary> {
+    const dataset = this.loadDataset();
+    const collection = await this.seedCollection(dataset);
+
+    const cases: CaseEvalResult[] = [];
+    for (const goldCase of dataset.cases) {
+      cases.push(
+        await this.evaluateCase(
+          collection,
+          dataset.nResults,
+          goldCase,
+          includeJudge,
+        ),
+      );
+    }
+
+    const scored = cases.filter((item) => !item.error);
+    const retrievalScores = scored.map((item) => item.retrievalHitRate);
+    const answerScores = scored.map((item) => item.answerHitRate);
+    const faithfulnessScores = scored.map((item) => item.faithfulness);
+    const latencies = scored.map((item) => item.totalLatencyMs);
+
+    return {
+      ranAt: new Date().toISOString(),
+      datasetVersion: dataset.version,
+      caseCount: cases.length,
+      passRate: round4(cases.filter((item) => item.passed).length / cases.length),
+      retrievalHitRate: round4(average(retrievalScores)),
+      answerHitRate: round4(average(answerScores)),
+      faithfulness: round4(average(faithfulnessScores)),
+      errorRate: round4(
+        cases.filter((item) => item.error).length / cases.length,
+      ),
+      latencyMs: {
+        avg: Math.round(average(latencies)),
+        p50: Math.round(percentile(latencies, 50)),
+        p95: Math.round(percentile(latencies, 95)),
+      },
+      cases,
+    };
+  }
+
+  private loadDataset(): GoldDataset {
+    const candidates = [
+      path.join(__dirname, 'datasets', 'cv-rag-gold.json'),
+      path.join(process.cwd(), 'src', 'eval', 'datasets', 'cv-rag-gold.json'),
+      path.join(
+        process.cwd(),
+        'apps',
+        'backend',
+        'src',
+        'eval',
+        'datasets',
+        'cv-rag-gold.json',
+      ),
+    ];
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) {
+      throw new ServiceUnavailableException(
+        'RAG gold dataset was not found next to the eval module',
+      );
+    }
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return goldSchema.parse(parsed);
+  }
+
+  private async seedCollection(dataset: GoldDataset): Promise<Collection> {
+    try {
+      await this.chromaClient.deleteCollection({ name: COLLECTION_NAME });
+    } catch {
+      this.logger.debug('Eval collection did not exist yet');
+    }
+
+    this.collection = await this.chromaClient.getOrCreateCollection({
+      name: COLLECTION_NAME,
+      embeddingFunction: this.embeddingFunction,
+    });
+
+    const chunks = splitTextIntoChunks(dataset.document, CHUNK_TOKENS);
+    const embeddings = await this.embeddingFunction.generate(chunks);
+    await this.collection.add({
+      ids: chunks.map((_, index) => `${EVAL_CV_ID}_chunk_${index}`),
+      documents: chunks.map((chunk, index) =>
+        JSON.stringify({
+          chunkIndex: index,
+          text: chunk,
+          cvId: EVAL_CV_ID,
+        }),
+      ),
+      metadatas: chunks.map((_, index) => ({
+        cvId: EVAL_CV_ID,
+        chunkIndex: index,
+      })),
+      embeddings,
+    });
+    this.logger.log(`Seeded ${chunks.length} gold chunks into ${COLLECTION_NAME}`);
+    return this.collection;
+  }
+
+  private async evaluateCase(
+    collection: Collection,
+    nResults: number,
+    goldCase: GoldDataset['cases'][number],
+    includeJudge: boolean,
+  ): Promise<CaseEvalResult> {
+    const started = Date.now();
+    try {
+      const retrievalStarted = Date.now();
+      const queryEmbedding = (
+        await this.embeddingFunction.generate([goldCase.question])
+      )[0];
+      const queryResult = await collection.query({
+        queryEmbeddings: [queryEmbedding],
+        nResults,
+        where: { cvId: EVAL_CV_ID },
+      });
+      const retrievalLatencyMs = Date.now() - retrievalStarted;
+
+      const context = (queryResult.documents[0] || [])
+        .map((doc) => {
+          try {
+            return JSON.parse(doc || '{}').text || '';
+          } catch {
+            return doc || '';
+          }
+        })
+        .filter(Boolean)
+        .join('\n\n');
+
+      const retrievalHitRate = keywordHitRate(
+        context,
+        goldCase.relevantKeywords,
+      );
+
+      const generationStarted = Date.now();
+      const answer = await this.generateAnswer(context, goldCase.question);
+      const generationLatencyMs = Date.now() - generationStarted;
+
+      const answerHitRate = keywordHitRate(
+        answer,
+        goldCase.answerKeywords,
+        goldCase.answerMatch ?? 'all',
+      );
+      const faithfulness = containsForbiddenPhrase(
+        answer,
+        goldCase.forbiddenPhrases,
+      )
+        ? 0
+        : 1;
+
+      let judge: CaseEvalResult['judge'];
+      if (includeJudge) {
+        judge = await this.judgeAnswer(context, goldCase.question, answer);
+      }
+
+      const passed =
+        retrievalHitRate >= 0.6 &&
+        answerHitRate >= 0.5 &&
+        faithfulness === 1 &&
+        (!judge || (judge.grounded && judge.relevant && judge.score >= 3));
+
+      return {
+        id: goldCase.id,
+        question: goldCase.question,
+        passed,
+        retrievalHitRate: round4(retrievalHitRate),
+        answerHitRate: round4(answerHitRate),
+        faithfulness,
+        retrievalLatencyMs,
+        generationLatencyMs,
+        totalLatencyMs: Date.now() - started,
+        retrievedPreview: context.slice(0, 280),
+        answerPreview: answer.slice(0, 280),
+        judge,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Eval case ${goldCase.id} failed`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return {
+        id: goldCase.id,
+        question: goldCase.question,
+        passed: false,
+        retrievalHitRate: 0,
+        answerHitRate: 0,
+        faithfulness: 0,
+        retrievalLatencyMs: 0,
+        generationLatencyMs: 0,
+        totalLatencyMs: Date.now() - started,
+        retrievedPreview: '',
+        answerPreview: '',
+        error: error instanceof Error ? error.message : 'Unknown eval error',
+      };
+    }
+  }
+
+  private async generateAnswer(
+    context: string,
+    question: string,
+  ): Promise<string> {
+    const llm = createGeminiChatModel(this.configService, 0.7);
+    const promptTemplate = PromptTemplate.fromTemplate(`
+        You are an AI assistant answering questions about a candidate's CV. Use the following CV content to provide an accurate and concise response. If the information is not available, state so clearly.
+  
+        CV Content:
+        {context}
+  
+        User Question: {question}
+  
+        Response:
+      `);
+    const chain = RunnableSequence.from([
+      promptTemplate,
+      llm as unknown as RunnableLike<any, any>,
+      new StringOutputParser(),
+    ]);
+    return chain.invoke({ context, question });
+  }
+
+  private async judgeAnswer(
+    context: string,
+    question: string,
+    answer: string,
+  ): Promise<CaseEvalResult['judge']> {
+    const llm = createGeminiChatModel(this.configService, 0);
+    const promptTemplate = PromptTemplate.fromTemplate(`
+        You evaluate a RAG answer. Use only the context. Return JSON with no markdown.
+        {{
+          "grounded": true,
+          "relevant": true,
+          "score": 4
+        }}
+        grounded: every factual claim in the answer is supported by the context, or the answer clearly says the information is missing.
+        relevant: the answer addresses the question.
+        score: integer from 1 to 5.
+
+        Context:
+        {context}
+
+        Question: {question}
+
+        Answer:
+        {answer}
+      `);
+    const chain = RunnableSequence.from([
+      promptTemplate,
+      llm as unknown as RunnableLike<any, any>,
+      new StringOutputParser(),
+    ]);
+    const raw = await chain.invoke({ context, question, answer });
+    const cleaned = raw
+      .replace(/```json\n?/, '')
+      .replace(/```/, '')
+      .trim();
+    return judgeSchema.parse(JSON.parse(cleaned));
+  }
+}

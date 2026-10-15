@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "description": "Fixed gold set for RAG quality. The document is seeded into an isolated Chroma collection so scores do not depend on uploaded CVs.",
+  "nResults": 5,
+  "document": "AMINA EL FADILI\nRabat, Morocco\nEmail: amina.elfadili@example.com\nPhone: +212 600 111 222\n\nPROFESSIONAL SUMMARY\nSoftware engineer with six years of experience building backend APIs and retrieval systems for hiring tools. Comfortable with NestJS, Python, and Gemini embeddings. Looking for an internship or first role around generative AI and RAG.\n\nTECHNICAL SKILLS\nProgramming: Python, TypeScript, SQL.\nFrameworks: NestJS, FastAPI, Next.js.\nAI and data: Gemini embeddings, ChromaDB, LangChain prompt chains, pdf-parse for CV text extraction.\nCloud: Docker Compose, GitHub, Dokploy. No production Vertex AI project yet.\nLanguages: Arabic (native), French (fluent), English (professional).\n\nEXPERIENCE\nAI CV Platform, MindCraft — Backend engineer, 2024 to 2026\nDesigned a NestJS API that stores candidate CVs in ChromaDB. Each PDF is split into word chunks of about 500 tokens, embedded with gemini-embedding-001, and retrieved with query embeddings. Chat answers are generated with Gemini through LangChain ChatOpenAI on the OpenAI-compatible Gemini endpoint. Built quiz generation that extracts skills then emails a candidate a multiple-choice test.\n\nAcme Health — Backend intern, 2022 to 2024\nWorked on appointment APIs in NestJS and wrote integration tests for booking conflicts. Did not work on payroll, billing, or salary systems.\n\nEDUCATION\nENSIAS, Rabat — Engineering degree in Computer Science and Artificial Intelligence, expected 2026.\nCoursework: information retrieval, neural networks, software architecture.\nCapstone: retrieval-augmented chat over internal PDF documents.\n\nCERTIFICATIONS\nNone listed for Google Cloud or Vertex AI.\n\nADDITIONAL NOTES\nThe candidate has not used COBOL, SAP, or Kubernetes in production. Salary, current compensation, and notice period are not stated anywhere in this CV.",
+  "cases": [
+    {
+      "id": "skills-python",
+      "question": "What programming languages and AI tools does this candidate list?",
+      "relevantKeywords": ["Python", "TypeScript", "Gemini", "ChromaDB"],
+      "answerKeywords": ["Python", "TypeScript"],
+      "forbiddenPhrases": ["COBOL", "Kubernetes"]
+    },
+    {
+      "id": "employer-acme",
+      "question": "Where did the candidate intern before MindCraft, and what did they work on?",
+      "relevantKeywords": ["Acme Health", "appointment"],
+      "answerKeywords": ["Acme Health", "NestJS"],
+      "forbiddenPhrases": ["payroll", "salary"]
+    },
+    {
+      "id": "education-ensias",
+      "question": "Which school is the candidate studying at and what is the capstone about?",
+      "relevantKeywords": ["ENSIAS", "capstone"],
+      "answerKeywords": ["ENSIAS", "retrieval"],
+      "forbiddenPhrases": ["Harvard", "MIT"]
+    },
+    {
+      "id": "missing-cobol",
+      "question": "Is the candidate an expert in COBOL?",
+      "relevantKeywords": ["COBOL"],
+      "answerKeywords": ["not", "no", "does not", "hasn't", "has not"],
+      "answerMatch": "any",
+      "forbiddenPhrases": ["expert in COBOL", "specializes in COBOL", "years of COBOL"]
+    },
+    {
+      "id": "missing-salary",
+      "question": "What is the candidate's current salary in MAD?",
+      "relevantKeywords": ["Salary"],
+      "answerKeywords": ["not", "no", "unavailable", "does not", "isn't"],
+      "answerMatch": "any",
+      "forbiddenPhrases": ["150000", "15,000", "20000 MAD"]
+    }
+  ]
+}

@@ -84,7 +84,10 @@ function NavLinks({
   const links = [
     { href: "/admin", label: "Home" },
     ...(userRole === "admin"
-      ? [{ href: "/admin/users", label: "Admin" }]
+      ? [
+          { href: "/admin/users", label: "Admin" },
+          { href: "/admin/eval", label: "Eval" },
+        ]
       : [{ href: "/admin/upload", label: "Upload" }]),
     { href: "/admin/chat", label: "Chat" },
     { href: "/admin/cvs", label: "Profils" },
