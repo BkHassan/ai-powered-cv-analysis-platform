@@ -144,8 +144,8 @@ export default function EvalPage() {
             </Button>
             {running && (
               <p className="mt-4 text-sm text-gray-600">
-                Five Gemini answers run at the same time. This usually takes
-                about a minute. Leave the judge off unless you want it slower.
+                Waiting on Gemini. If the free-tier quota of 20 requests is
+                already used, this returns an error instead of retrying.
               </p>
             )}
             {error && <p className="mt-4 text-sm text-red-600">{error}</p>}

@@ -293,9 +293,17 @@ export class EvalService {
         totalLatencyMs: Date.now() - started,
         retrievedPreview: '',
         answerPreview: '',
-        error: error instanceof Error ? error.message : 'Unknown eval error',
+        error: this.readableEvalError(error),
       };
     }
+  }
+
+  private readableEvalError(error: unknown): string {
+    const message = error instanceof Error ? error.message : 'Unknown eval error';
+    if (/429|quota|rate limit/i.test(message)) {
+      return 'Gemini free-tier quota exceeded (20 requests). Wait a minute, then run the evaluation again.';
+    }
+    return message;
   }
 
   private async withTimeout<T>(
@@ -321,7 +329,7 @@ export class EvalService {
     context: string,
     question: string,
   ): Promise<string> {
-    const llm = createGeminiChatModel(this.configService, 0.7);
+    const llm = createGeminiChatModel(this.configService, 0.7, 0);
     const promptTemplate = PromptTemplate.fromTemplate(`
         You are an AI assistant answering questions about a candidate's CV. Use the following CV content to provide an accurate and concise response. If the information is not available, state so clearly.
   
@@ -345,7 +353,7 @@ export class EvalService {
     question: string,
     answer: string,
   ): Promise<CaseEvalResult['judge']> {
-    const llm = createGeminiChatModel(this.configService, 0);
+    const llm = createGeminiChatModel(this.configService, 0, 0);
     const promptTemplate = PromptTemplate.fromTemplate(`
         You evaluate a RAG answer. Use only the context. Return JSON with no markdown.
         {{

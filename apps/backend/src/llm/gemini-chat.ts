@@ -16,6 +16,7 @@ const logger = new Logger('GeminiChat');
 export function createGeminiChatModel(
   configService: ConfigService,
   temperature: number,
+  maxRetries = 6,
 ): ChatOpenAI {
   const apiKey = configService.get<string>('GEMINI_API_KEY');
   if (!apiKey) {
@@ -30,6 +31,7 @@ export function createGeminiChatModel(
     openAIApiKey: apiKey,
     modelName,
     temperature,
+    maxRetries,
     configuration: {
       baseURL: GEMINI_OPENAI_BASE_URL,
     },
