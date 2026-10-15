@@ -142,6 +142,12 @@ export default function EvalPage() {
             <Button onClick={runEval} disabled={running}>
               {running ? "Running evaluation…" : "Run evaluation"}
             </Button>
+            {running && (
+              <p className="mt-4 text-sm text-gray-600">
+                Five Gemini answers run at the same time. This usually takes
+                about a minute. Leave the judge off unless you want it slower.
+              </p>
+            )}
             {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
           </section>
 

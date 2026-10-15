@@ -98,17 +98,16 @@ export class EvalService {
     const dataset = this.loadDataset();
     const collection = await this.seedCollection(dataset);
 
-    const cases: CaseEvalResult[] = [];
-    for (const goldCase of dataset.cases) {
-      cases.push(
-        await this.evaluateCase(
+    const cases = await Promise.all(
+      dataset.cases.map((goldCase) =>
+        this.evaluateCase(
           collection,
           dataset.nResults,
           goldCase,
           includeJudge,
         ),
-      );
-    }
+      ),
+    );
 
     const scored = cases.filter((item) => !item.error);
     const retrievalScores = scored.map((item) => item.retrievalHitRate);
@@ -203,7 +202,11 @@ export class EvalService {
     try {
       const retrievalStarted = Date.now();
       const queryEmbedding = (
-        await this.embeddingFunction.generate([goldCase.question])
+        await this.withTimeout(
+          this.embeddingFunction.generate([goldCase.question]),
+          30_000,
+          'Query embedding',
+        )
       )[0];
       const queryResult = await collection.query({
         queryEmbeddings: [queryEmbedding],
@@ -229,7 +232,11 @@ export class EvalService {
       );
 
       const generationStarted = Date.now();
-      const answer = await this.generateAnswer(context, goldCase.question);
+      const answer = await this.withTimeout(
+        this.generateAnswer(context, goldCase.question),
+        60_000,
+        'Gemini answer',
+      );
       const generationLatencyMs = Date.now() - generationStarted;
 
       const answerHitRate = keywordHitRate(
@@ -288,6 +295,25 @@ export class EvalService {
         answerPreview: '',
         error: error instanceof Error ? error.message : 'Unknown eval error',
       };
+    }
+  }
+
+  private async withTimeout<T>(
+    work: Promise<T>,
+    ms: number,
+    label: string,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+        ms,
+      );
+    });
+    try {
+      return await Promise.race([work, timeout]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
