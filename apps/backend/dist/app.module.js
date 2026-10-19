@@ -11,6 +11,9 @@ const common_1 = require("@nestjs/common");
 const auth_module_1 = require("./auth/auth.module");
 const cv_module_1 = require("./cv/cv.module");
 const config_1 = require("@nestjs/config");
+const quiz_module_1 = require("./quiz/quiz.module");
+const eval_module_1 = require("./eval/eval.module");
+const app_controller_1 = require("./app.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -21,8 +24,9 @@ exports.AppModule = AppModule = __decorate([
                 envFilePath: '.env',
                 isGlobal: true,
             }),
-            auth_module_1.AuthModule, cv_module_1.CvModule
+            auth_module_1.AuthModule, cv_module_1.CvModule, quiz_module_1.QuizModule, eval_module_1.EvalModule
         ],
+        controllers: [app_controller_1.AppController],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

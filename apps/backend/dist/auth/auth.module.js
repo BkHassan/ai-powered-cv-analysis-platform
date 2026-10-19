@@ -14,6 +14,7 @@ const jwt_1 = require("@nestjs/jwt");
 const jwt_strategy_1 = require("./jwt.strategy");
 const chromadb_1 = require("chromadb");
 const config_1 = require("@nestjs/config");
+const email_services_1 = require("../email/email.services");
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
@@ -36,6 +37,7 @@ exports.AuthModule = AuthModule = __decorate([
                 useFactory: (configService) => new chromadb_1.ChromaClient({ path: configService.get('CHROMADB_URL') }),
                 inject: [config_1.ConfigService],
             },
+            email_services_1.EmailService,
         ],
         controllers: [auth_controller_1.AuthController],
     })

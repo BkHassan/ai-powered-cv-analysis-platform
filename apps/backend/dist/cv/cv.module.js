@@ -26,6 +26,7 @@ exports.CvModule = CvModule = __decorate([
                 inject: [config_1.ConfigService],
             },
         ],
+        exports: [cv_service_1.CvService],
     })
 ], CvModule);
 //# sourceMappingURL=cv.module.js.map

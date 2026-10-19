@@ -23,7 +23,15 @@ let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(pas
         });
     }
     async validate(payload) {
-        return { sub: payload.sub, email: payload.email, role: payload.role };
+        if (payload.emailVerified === false) {
+            throw new common_1.UnauthorizedException('Email verification is required');
+        }
+        return {
+            sub: payload.sub,
+            email: payload.email,
+            role: payload.role,
+            tier: payload.tier || 'Free',
+        };
     }
 };
 exports.JwtStrategy = JwtStrategy;

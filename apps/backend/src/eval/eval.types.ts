@@ -24,15 +24,18 @@ export type GoldDataset = {
   cases: GoldCase[];
 };
 
+export type EvalStatus = 'PASS' | 'FAIL' | 'ERROR' | 'NOT_RUN';
+
 export type CaseEvalResult = {
   id: string;
   cvId: string;
   question: string;
   goldAnswer: string;
+  status: EvalStatus;
   passed: boolean;
-  retrievalHitRate: number;
-  answerHitRate: number;
-  faithfulness: number;
+  retrievalHitRate: number | null;
+  answerHitRate: number | null;
+  faithfulness: number | null;
   abstention: number | null;
   retrievalLatencyMs: number;
   generationLatencyMs: number;
@@ -51,12 +54,18 @@ export type EvalSummary = {
   ranAt: string;
   datasetVersion: string;
   caseCount: number;
-  passRate: number;
-  retrievalHitRate: number;
-  answerHitRate: number;
-  faithfulness: number;
+  completedCount: number;
+  passCount: number;
+  failCount: number;
+  errorCount: number;
+  notRunCount: number;
+  passRate: number | null;
+  retrievalHitRate: number | null;
+  answerHitRate: number | null;
+  faithfulness: number | null;
   abstention: number | null;
   errorRate: number;
+  stoppedReason: string | null;
   latencyMs: {
     avg: number;
     p50: number;

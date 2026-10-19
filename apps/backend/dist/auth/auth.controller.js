@@ -19,6 +19,8 @@ const signup_dto_1 = require("./dto/signup.dto");
 const login_dto_1 = require("./dto/login.dto");
 const forgot_password_1 = require("./dto/forgot-password");
 const reset_password_1 = require("./dto/reset-password");
+const verify_otp_dto_1 = require("./dto/verify-otp.dto");
+const jwt_auth_guard_1 = require("./jwt-auth.guard");
 let AuthController = class AuthController {
     authService;
     constructor(authService) {
@@ -30,11 +32,26 @@ let AuthController = class AuthController {
     async login(loginDto) {
         return this.authService.login(loginDto);
     }
+    async verifyOtp(verifyOtpDto) {
+        return this.authService.verifyOtp(verifyOtpDto);
+    }
     async forgotPassword(forgotPasswordDto) {
         return this.authService.forgotPassword(forgotPasswordDto);
     }
     async resetPassword(resetPasswordDto) {
         return this.authService.resetPassword(resetPasswordDto);
+    }
+    async deleteUser(email, req) {
+        return this.authService.deleteUserByEmail(email, req.user.role);
+    }
+    async getAllUsers(req) {
+        return this.authService.getAllUsers(req.user.role);
+    }
+    async updateUserRole(email, role, req) {
+        return this.authService.updateUserRole(email, role, req.user.email, req.user.role);
+    }
+    async updateUserTier(email, tier, req) {
+        return this.authService.updateUserTier(email, tier, req.user.role);
     }
 };
 exports.AuthController = AuthController;
@@ -53,6 +70,13 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 __decorate([
+    (0, common_1.Post)('verify-otp'),
+    __param(0, (0, common_1.Body)(common_1.ValidationPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [verify_otp_dto_1.VerifyOtpDto]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "verifyOtp", null);
+__decorate([
     (0, common_1.Post)('forgot-password'),
     __param(0, (0, common_1.Body)(common_1.ValidationPipe)),
     __metadata("design:type", Function),
@@ -66,6 +90,43 @@ __decorate([
     __metadata("design:paramtypes", [reset_password_1.ResetPasswordDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "resetPassword", null);
+__decorate([
+    (0, common_1.Delete)('delete'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Query)('email')),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "deleteUser", null);
+__decorate([
+    (0, common_1.Get)('users'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "getAllUsers", null);
+__decorate([
+    (0, common_1.Patch)('update-role'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Body)('email')),
+    __param(1, (0, common_1.Body)('role')),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "updateUserRole", null);
+__decorate([
+    (0, common_1.Patch)('update-tier'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Body)('email')),
+    __param(1, (0, common_1.Body)('tier')),
+    __param(2, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "updateUserTier", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService])

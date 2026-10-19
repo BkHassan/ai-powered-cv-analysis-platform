@@ -28,6 +28,47 @@ export function containsForbiddenPhrase(
   return phrases.some((phrase) => haystack.includes(phrase.toLowerCase()));
 }
 
+function negatedNear(text: string, phrase: string): boolean {
+  const index = text.indexOf(phrase);
+  if (index < 0) {
+    return false;
+  }
+  const window = text.slice(
+    Math.max(0, index - 48),
+    index + phrase.length + 48,
+  );
+  return (
+    /\b(not|no|never|without|n't)\b/.test(window) ||
+    window.includes('does not') ||
+    window.includes('do not') ||
+    window.includes('did not')
+  );
+}
+
+/**
+ * A forbidden phrase is an unsupported claim only when the answer states it
+ * without the same negation the retrieved CV uses. "Kafka is not listed"
+ * is faithful when the CV says "does not list Kafka".
+ */
+export function unsupportedClaim(
+  answer: string,
+  context: string,
+  phrases: string[],
+): boolean {
+  const answerNorm = normalizeText(answer);
+  const contextNorm = normalizeText(context);
+  return phrases.some((phrase) => {
+    const needle = phrase.toLowerCase();
+    if (!answerNorm.includes(needle)) {
+      return false;
+    }
+    const answerNegated = negatedNear(answerNorm, needle);
+    const contextNegated =
+      contextNorm.includes(needle) && negatedNear(contextNorm, needle);
+    return !(answerNegated && contextNegated);
+  });
+}
+
 export function percentile(values: number[], p: number): number {
   if (!values.length) {
     return 0;

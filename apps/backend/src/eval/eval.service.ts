@@ -18,17 +18,21 @@ import { z } from 'zod';
 import { createGeminiChatModel } from '../llm/gemini-chat';
 import {
   average,
-  containsForbiddenPhrase,
   keywordHitRate,
   percentile,
   round4,
   splitTextIntoChunks,
+  unsupportedClaim,
 } from './eval.metrics';
-import { CaseEvalResult, EvalSummary, GoldDataset } from './eval.types';
+import {
+  CaseEvalResult,
+  EvalStatus,
+  EvalSummary,
+  GoldDataset,
+} from './eval.types';
 
 const COLLECTION_NAME = 'eval_gold';
 const CHUNK_TOKENS = 180;
-const CASE_CONCURRENCY = 3;
 
 const goldSchema = z.object({
   version: z.string(),
@@ -108,44 +112,34 @@ export class EvalService {
   async run(includeJudge = false): Promise<EvalSummary> {
     const dataset = this.loadDataset();
     const collection = await this.seedCollection(dataset);
+    const saved = this.loadSavedCases(dataset.version);
+    const cases: CaseEvalResult[] = [];
+    let stoppedReason: string | null = null;
 
-    const cases = await mapPool(dataset.cases, CASE_CONCURRENCY, (goldCase) =>
-      this.evaluateCase(
+    for (const goldCase of dataset.cases) {
+      const previous = saved[goldCase.id];
+      if (previous && (previous.status === 'PASS' || previous.status === 'FAIL')) {
+        cases.push(previous);
+        continue;
+      }
+      if (stoppedReason) {
+        cases.push(this.notRun(goldCase, stoppedReason));
+        continue;
+      }
+      const result = await this.evaluateCase(
         collection,
         dataset.nResults,
         goldCase,
         includeJudge,
-      ),
-    );
-
-    const scored = cases.filter((item) => !item.error);
-    const retrievalScores = scored.map((item) => item.retrievalHitRate);
-    const answerScores = scored.map((item) => item.answerHitRate);
-    const faithfulnessScores = scored.map((item) => item.faithfulness);
-    const abstentions = scored
-      .map((item) => item.abstention)
-      .filter((value): value is number => value !== null);
-    const latencies = scored.map((item) => item.totalLatencyMs);
-
-    return {
-      ranAt: new Date().toISOString(),
-      datasetVersion: dataset.version,
-      caseCount: cases.length,
-      passRate: round4(cases.filter((item) => item.passed).length / cases.length),
-      retrievalHitRate: round4(average(retrievalScores)),
-      answerHitRate: round4(average(answerScores)),
-      faithfulness: round4(average(faithfulnessScores)),
-      abstention: abstentions.length ? round4(average(abstentions)) : null,
-      errorRate: round4(
-        cases.filter((item) => item.error).length / cases.length,
-      ),
-      latencyMs: {
-        avg: Math.round(average(latencies)),
-        p50: Math.round(percentile(latencies, 50)),
-        p95: Math.round(percentile(latencies, 95)),
-      },
-      cases,
-    };
+      );
+      cases.push(result);
+      this.saveCases(dataset.version, cases);
+      if (result.status === 'ERROR' && this.isQuotaError(result.error)) {
+        stoppedReason = result.error ?? 'Gemini quota exhausted';
+      }
+    }
+    this.saveCases(dataset.version, cases);
+    return this.summarize(dataset.version, cases, stoppedReason);
   }
 
   private loadDataset(): GoldDataset {
@@ -173,15 +167,33 @@ export class EvalService {
   }
 
   private async seedCollection(dataset: GoldDataset): Promise<Collection> {
+    const expectedChunks = dataset.documents.reduce(
+      (sum, cv) => sum + splitTextIntoChunks(cv.text, CHUNK_TOKENS).length,
+      0,
+    );
     try {
+      const existing = await this.chromaClient.getCollection({
+        name: COLLECTION_NAME,
+        embeddingFunction: this.embeddingFunction,
+      });
+      const cachedVersion = String(existing.metadata?.datasetVersion ?? '');
+      const cachedCount = await existing.count();
+      if (cachedVersion === dataset.version && cachedCount === expectedChunks) {
+        this.logger.log(
+          `Reusing ${cachedCount} cached eval embeddings for dataset ${dataset.version}`,
+        );
+        this.collection = existing;
+        return existing;
+      }
       await this.chromaClient.deleteCollection({ name: COLLECTION_NAME });
     } catch {
-      this.logger.debug('Eval collection did not exist yet');
+      this.logger.debug('Eval collection will be created');
     }
 
     this.collection = await this.chromaClient.getOrCreateCollection({
       name: COLLECTION_NAME,
       embeddingFunction: this.embeddingFunction,
+      metadata: { datasetVersion: dataset.version },
     });
 
     const ids: string[] = [];
@@ -263,8 +275,9 @@ export class EvalService {
         goldCase.answerKeywords,
         goldCase.answerMatch ?? 'all',
       );
-      const faithfulness = containsForbiddenPhrase(
+      const faithfulness = unsupportedClaim(
         answer,
+        context,
         goldCase.forbiddenPhrases,
       )
         ? 0
@@ -286,12 +299,14 @@ export class EvalService {
         faithfulness === 1 &&
         (abstention === null || abstention === 1) &&
         (!judge || (judge.grounded && judge.relevant && judge.score >= 3));
+      const status: EvalStatus = passed ? 'PASS' : 'FAIL';
 
       return {
         id: goldCase.id,
         cvId: goldCase.cvId,
         question: goldCase.question,
         goldAnswer: goldCase.goldAnswer,
+        status,
         passed,
         retrievalHitRate: round4(retrievalHitRate),
         answerHitRate: round4(answerHitRate),
@@ -314,11 +329,12 @@ export class EvalService {
         cvId: goldCase.cvId,
         question: goldCase.question,
         goldAnswer: goldCase.goldAnswer,
+        status: 'ERROR',
         passed: false,
-        retrievalHitRate: 0,
-        answerHitRate: 0,
-        faithfulness: 0,
-        abstention: goldCase.expectAbstain ? 0 : null,
+        retrievalHitRate: null,
+        answerHitRate: null,
+        faithfulness: null,
+        abstention: null,
         retrievalLatencyMs: 0,
         generationLatencyMs: 0,
         totalLatencyMs: Date.now() - started,
@@ -327,6 +343,115 @@ export class EvalService {
         error: this.readableEvalError(error),
       };
     }
+  }
+
+  private summarize(
+    datasetVersion: string,
+    cases: CaseEvalResult[],
+    stoppedReason: string | null,
+  ): EvalSummary {
+    const completed = cases.filter(
+      (item) => item.status === 'PASS' || item.status === 'FAIL',
+    );
+    const passCount = completed.filter((item) => item.status === 'PASS').length;
+    const retrievalScores = completed.map((item) => item.retrievalHitRate ?? 0);
+    const answerScores = completed.map((item) => item.answerHitRate ?? 0);
+    const faithfulnessScores = completed.map((item) => item.faithfulness ?? 0);
+    const abstentions = completed
+      .map((item) => item.abstention)
+      .filter((value): value is number => value !== null);
+    const latencies = completed.map((item) => item.totalLatencyMs);
+    const ratio = (count: number, total: number) =>
+      total === 0 ? null : round4(count / total);
+
+    return {
+      ranAt: new Date().toISOString(),
+      datasetVersion,
+      caseCount: cases.length,
+      completedCount: completed.length,
+      passCount,
+      failCount: completed.length - passCount,
+      errorCount: cases.filter((item) => item.status === 'ERROR').length,
+      notRunCount: cases.filter((item) => item.status === 'NOT_RUN').length,
+      passRate: ratio(passCount, completed.length),
+      retrievalHitRate: completed.length ? round4(average(retrievalScores)) : null,
+      answerHitRate: completed.length ? round4(average(answerScores)) : null,
+      faithfulness: completed.length
+        ? round4(average(faithfulnessScores))
+        : null,
+      abstention: abstentions.length ? round4(average(abstentions)) : null,
+      errorRate: round4(
+        cases.filter((item) => item.status === 'ERROR').length / cases.length,
+      ),
+      stoppedReason,
+      latencyMs: {
+        avg: Math.round(average(latencies)),
+        p50: Math.round(percentile(latencies, 50)),
+        p95: Math.round(percentile(latencies, 95)),
+      },
+      cases,
+    };
+  }
+
+  private notRun(
+    goldCase: GoldDataset['cases'][number],
+    reason: string,
+  ): CaseEvalResult {
+    return {
+      id: goldCase.id,
+      cvId: goldCase.cvId,
+      question: goldCase.question,
+      goldAnswer: goldCase.goldAnswer,
+      status: 'NOT_RUN',
+      passed: false,
+      retrievalHitRate: null,
+      answerHitRate: null,
+      faithfulness: null,
+      abstention: null,
+      retrievalLatencyMs: 0,
+      generationLatencyMs: 0,
+      totalLatencyMs: 0,
+      retrievedPreview: '',
+      answerPreview: '',
+      error: reason,
+    };
+  }
+
+  private isQuotaError(message?: string): boolean {
+    return /quota exceeded|free-tier quota/i.test(message ?? '');
+  }
+
+  private resultsPath(version: string): string {
+    return path.join(process.cwd(), 'eval-runs', `rag-${version}.json`);
+  }
+
+  private loadSavedCases(version: string): Record<string, CaseEvalResult> {
+    const filePath = this.resultsPath(version);
+    if (!fs.existsSync(filePath)) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
+        cases?: CaseEvalResult[];
+      };
+      return Object.fromEntries(
+        (parsed.cases ?? [])
+          .filter((item) => item.status === 'PASS' || item.status === 'FAIL')
+          .map((item) => [item.id, item]),
+      );
+    } catch {
+      this.logger.warn('Could not read saved eval results; starting fresh');
+      return {};
+    }
+  }
+
+  private saveCases(version: string, cases: CaseEvalResult[]) {
+    const filePath = this.resultsPath(version);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ datasetVersion: version, cases }, null, 2),
+    );
   }
 
   private readableEvalError(error: unknown): string {
@@ -416,24 +541,4 @@ export class EvalService {
       .trim();
     return judgeSchema.parse(JSON.parse(cleaned));
   }
-}
-
-async function mapPool<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  async function run() {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await worker(items[index]);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => run()),
-  );
-  return results;
 }

@@ -12,10 +12,11 @@ type CaseResult = {
   cvId: string;
   question: string;
   goldAnswer: string;
+  status: "PASS" | "FAIL" | "ERROR" | "NOT_RUN";
   passed: boolean;
-  retrievalHitRate: number;
-  answerHitRate: number;
-  faithfulness: number;
+  retrievalHitRate: number | null;
+  answerHitRate: number | null;
+  faithfulness: number | null;
   abstention: number | null;
   totalLatencyMs: number;
   retrievedPreview: string;
@@ -28,17 +29,24 @@ type EvalSummary = {
   ranAt: string;
   datasetVersion: string;
   caseCount: number;
-  passRate: number;
-  retrievalHitRate: number;
-  answerHitRate: number;
-  faithfulness: number;
+  completedCount: number;
+  passCount: number;
+  failCount: number;
+  errorCount: number;
+  notRunCount: number;
+  passRate: number | null;
+  retrievalHitRate: number | null;
+  answerHitRate: number | null;
+  faithfulness: number | null;
   abstention: number | null;
   errorRate: number;
+  stoppedReason: string | null;
   latencyMs: { avg: number; p50: number; p95: number };
   cases: CaseResult[];
 };
 
-function percent(value: number) {
+function percent(value: number | null) {
+  if (value === null) return "—";
   return `${Math.round(value * 100)}%`;
 }
 
@@ -147,8 +155,8 @@ export default function EvalPage() {
             </Button>
             {running && (
               <p className="mt-4 text-sm text-gray-600">
-                Twenty-five Gemini answers, three at a time. This takes several
-                minutes and needs quota beyond the free tier of 20 requests.
+                Cases run one at a time. A saved pass or fail is reused. If the
+                Gemini daily quota is exhausted, the rest are marked not run.
               </p>
             )}
             {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
@@ -185,9 +193,13 @@ export default function EvalPage() {
                   {summary.latencyMs.p50} ms · p95 {summary.latencyMs.p95} ms
                 </p>
                 <p>
-                  Error rate {percent(summary.errorRate)} · {summary.caseCount}{" "}
-                  cases · dataset v{summary.datasetVersion}
+                  {summary.passCount} passed / {summary.completedCount} completed
+                  · {summary.failCount} failed · {summary.errorCount} errors ·{" "}
+                  {summary.notRunCount} not run · dataset v{summary.datasetVersion}
                 </p>
+                {summary.stoppedReason && (
+                  <p className="text-red-600 mt-2">{summary.stoppedReason}</p>
+                )}
               </section>
               <section className="space-y-4">
                 {summary.cases.map((item) => (
@@ -199,12 +211,14 @@ export default function EvalPage() {
                       <h2 className="font-semibold text-gray-900">{item.id}</h2>
                       <span
                         className={
-                          item.passed
+                          item.status === "PASS"
                             ? "text-green-700 font-semibold"
-                            : "text-red-700 font-semibold"
+                            : item.status === "FAIL"
+                              ? "text-red-700 font-semibold"
+                              : "text-gray-500 font-semibold"
                         }
                       >
-                        {item.passed ? "Pass" : "Fail"}
+                        {item.status === "NOT_RUN" ? "Not run" : item.status}
                       </span>
                     </div>
                     <p className="text-gray-800 mb-2">{item.question}</p>
