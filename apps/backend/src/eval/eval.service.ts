@@ -18,6 +18,10 @@ import { z } from 'zod';
 import { createGeminiChatModel } from '../llm/gemini-chat';
 import {
   average,
+  describeGeminiQuota,
+  geminiRetryDelayMs,
+  isDailyGeminiQuota,
+  isTransientGeminiLimit,
   keywordHitRate,
   percentile,
   round4,
@@ -33,6 +37,39 @@ import {
 
 const COLLECTION_NAME = 'eval_gold';
 const CHUNK_TOKENS = 180;
+const GEMINI_RETRY_ATTEMPTS = 3;
+
+function geminiErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+async function withGeminiRetry<T>(
+  work: () => Promise<T>,
+  label: string,
+  logger: Logger,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= GEMINI_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await work();
+    } catch (error) {
+      lastError = error;
+      const message = geminiErrorText(error);
+      if (!isTransientGeminiLimit(message) || attempt === GEMINI_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      const delay = geminiRetryDelayMs(message, attempt);
+      logger.warn(
+        `${label} hit a transient Gemini rate limit (attempt ${attempt}/${GEMINI_RETRY_ATTEMPTS}), waiting ${delay}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
 
 const goldSchema = z.object({
   version: z.string(),
@@ -88,7 +125,11 @@ class GeminiEmbeddingFunction implements IEmbeddingFunction {
     });
     const embeddings: number[][] = [];
     for (const text of texts) {
-      const result = await model.embedContent(text);
+      const result = await withGeminiRetry(
+        () => model.embedContent(text),
+        'embedContent',
+        this.logger,
+      );
       embeddings.push(result.embedding.values);
     }
     this.logger.log(`Eval embeddings generated for ${texts.length} texts`);
@@ -109,8 +150,9 @@ export class EvalService {
     this.embeddingFunction = new GeminiEmbeddingFunction(configService);
   }
 
-  async run(includeJudge = false): Promise<EvalSummary> {
+  async run(includeJudge = false, rerunCompleted = false): Promise<EvalSummary> {
     const dataset = this.loadDataset();
+    const saved = rerunCompleted ? {} : this.loadSavedCases(dataset.version);
     let collection: Collection;
     try {
       collection = await this.seedCollection(dataset);
@@ -119,11 +161,19 @@ export class EvalService {
       this.logger.error('Eval seeding failed', message);
       return this.summarize(
         dataset.version,
-        dataset.cases.map((goldCase) => this.notRun(goldCase, message)),
+        dataset.cases.map((goldCase) => {
+          const previous = saved[goldCase.id];
+          if (
+            previous &&
+            (previous.status === 'PASS' || previous.status === 'FAIL')
+          ) {
+            return previous;
+          }
+          return this.notRun(goldCase, message);
+        }),
         message,
       );
     }
-    const saved = this.loadSavedCases(dataset.version);
     const cases: CaseEvalResult[] = [];
     let stoppedReason: string | null = null;
 
@@ -429,7 +479,8 @@ export class EvalService {
   }
 
   private isQuotaError(message?: string): boolean {
-    return /quota exceeded|free-tier quota/i.test(message ?? '');
+    const text = message ?? '';
+    return isDailyGeminiQuota(text) || /free-tier quota exhausted/i.test(text);
   }
 
   private resultsPath(version: string): string {
@@ -474,11 +525,14 @@ export class EvalService {
   }
 
   private readableEvalError(error: unknown): string {
-    const message = error instanceof Error ? error.message : 'Unknown eval error';
-    if (/429|quota|rate limit/i.test(message)) {
-      return 'Gemini free-tier quota exceeded (20 requests). Wait a minute, then run the evaluation again.';
+    const message = geminiErrorText(error);
+    if (isDailyGeminiQuota(message)) {
+      return describeGeminiQuota(message);
     }
-    return message;
+    if (isTransientGeminiLimit(message)) {
+      return 'Gemini rate limit persisted after bounded retries. This case was not scored.';
+    }
+    return message === 'undefined' ? 'Unknown eval error' : message;
   }
 
   private async withTimeout<T>(
@@ -520,7 +574,11 @@ export class EvalService {
       llm as unknown as RunnableLike<any, any>,
       new StringOutputParser(),
     ]);
-    return chain.invoke({ context, question });
+    return withGeminiRetry(
+      () => chain.invoke({ context, question }),
+      'generateContent',
+      this.logger,
+    );
   }
 
   private async judgeAnswer(
@@ -553,7 +611,11 @@ export class EvalService {
       llm as unknown as RunnableLike<any, any>,
       new StringOutputParser(),
     ]);
-    const raw = await chain.invoke({ context, question, answer });
+    const raw = await withGeminiRetry(
+      () => chain.invoke({ context, question, answer }),
+      'generateContent judge',
+      this.logger,
+    );
     const cleaned = raw
       .replace(/```json\n?/, '')
       .replace(/```/, '')

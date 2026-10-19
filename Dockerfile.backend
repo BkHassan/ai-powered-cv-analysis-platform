@@ -41,7 +41,7 @@ COPY --from=build --chown=node:node /app/dist ./dist
 
 # CvService resolves uploads to dist/Cvfiles; create it up front so the volume
 # mounted there inherits ownership by the unprivileged user.
-RUN mkdir -p dist/Cvfiles && chown node:node dist/Cvfiles
+RUN mkdir -p dist/Cvfiles eval-runs && chown node:node dist/Cvfiles eval-runs
 USER node
 
 EXPOSE 3003

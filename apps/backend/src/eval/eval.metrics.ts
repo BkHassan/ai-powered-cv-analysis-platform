@@ -116,3 +116,45 @@ export function splitTextIntoChunks(text: string, maxTokens: number): string[] {
 
   return chunks.filter((chunk) => chunk.trim().length > 0);
 }
+
+/** Daily free-tier exhaustion. Do not retry these. */
+export function isDailyGeminiQuota(message: string): boolean {
+  return /free_tier_requests|exceeded your current quota|check your plan and billing|per[\s_-]?day/i.test(
+    message,
+  );
+}
+
+/** Short 429s that are not the daily free-tier bucket. */
+export function isTransientGeminiLimit(message: string): boolean {
+  if (isDailyGeminiQuota(message)) {
+    return false;
+  }
+  return /429|rate[\s-]?limit|resource exhausted|too many requests|please retry/i.test(
+    message,
+  );
+}
+
+export function geminiRetryDelayMs(message: string, attempt: number): number {
+  const retryIn = message.match(/retry in ([0-9.]+)\s*s/i);
+  const header = message.match(/retry-after[:\s]+([0-9.]+)/i);
+  const seconds = retryIn
+    ? Number(retryIn[1])
+    : header
+      ? Number(header[1])
+      : Number.NaN;
+  const guided = Number.isFinite(seconds)
+    ? seconds * 1000
+    : 2 ** Math.max(0, attempt - 1) * 1000;
+  const bounded = Math.min(15_000, Math.max(500, Math.round(guided)));
+  return bounded + Math.floor(Math.random() * 250);
+}
+
+export function describeGeminiQuota(message: string): string {
+  const metric = message.match(
+    /Quota exceeded for metric:\s*(\S+?),?\s*limit:\s*(\d+)/i,
+  );
+  if (metric) {
+    return `Gemini free-tier quota exhausted for ${metric[1]} (limit ${metric[2]}). This is an API quota error, not a retrieval or answer failure. Remaining cases were not run.`;
+  }
+  return 'Gemini free-tier quota exhausted. This is an API quota error, not a retrieval or answer failure. Remaining cases were not run.';
+}

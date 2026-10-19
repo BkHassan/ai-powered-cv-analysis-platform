@@ -20,6 +20,9 @@ export class EvalController {
     if (req.user?.role !== 'admin') {
       throw new ForbiddenException('Only admins can run quality evaluation');
     }
-    return this.evalService.run(Boolean(body.includeJudge));
+    return this.evalService.run(
+      Boolean(body.includeJudge),
+      Boolean(body.rerunCompleted),
+    );
   }
 }
