@@ -27,26 +27,37 @@ import {
 import { CaseEvalResult, EvalSummary, GoldDataset } from './eval.types';
 
 const COLLECTION_NAME = 'eval_gold';
-const EVAL_CV_ID = 'eval_cv_gold';
-const CHUNK_TOKENS = 500;
+const CHUNK_TOKENS = 180;
+const CASE_CONCURRENCY = 3;
 
 const goldSchema = z.object({
   version: z.string(),
   description: z.string(),
   nResults: z.number().int().positive(),
-  document: z.string().min(20),
+  documents: z
+    .array(
+      z.object({
+        cvId: z.string(),
+        label: z.string(),
+        text: z.string().min(20),
+      }),
+    )
+    .min(5),
   cases: z
     .array(
       z.object({
         id: z.string(),
+        cvId: z.string(),
         question: z.string(),
-        relevantKeywords: z.array(z.string()),
-        answerKeywords: z.array(z.string()),
+        goldAnswer: z.string(),
+        relevantKeywords: z.array(z.string()).min(1),
+        answerKeywords: z.array(z.string()).min(1),
         forbiddenPhrases: z.array(z.string()),
         answerMatch: z.enum(['all', 'any']).optional(),
+        expectAbstain: z.boolean().optional(),
       }),
     )
-    .min(1),
+    .min(25),
 });
 
 const judgeSchema = z.object({
@@ -98,14 +109,12 @@ export class EvalService {
     const dataset = this.loadDataset();
     const collection = await this.seedCollection(dataset);
 
-    const cases = await Promise.all(
-      dataset.cases.map((goldCase) =>
-        this.evaluateCase(
-          collection,
-          dataset.nResults,
-          goldCase,
-          includeJudge,
-        ),
+    const cases = await mapPool(dataset.cases, CASE_CONCURRENCY, (goldCase) =>
+      this.evaluateCase(
+        collection,
+        dataset.nResults,
+        goldCase,
+        includeJudge,
       ),
     );
 
@@ -113,6 +122,9 @@ export class EvalService {
     const retrievalScores = scored.map((item) => item.retrievalHitRate);
     const answerScores = scored.map((item) => item.answerHitRate);
     const faithfulnessScores = scored.map((item) => item.faithfulness);
+    const abstentions = scored
+      .map((item) => item.abstention)
+      .filter((value): value is number => value !== null);
     const latencies = scored.map((item) => item.totalLatencyMs);
 
     return {
@@ -123,6 +135,7 @@ export class EvalService {
       retrievalHitRate: round4(average(retrievalScores)),
       answerHitRate: round4(average(answerScores)),
       faithfulness: round4(average(faithfulnessScores)),
+      abstention: abstentions.length ? round4(average(abstentions)) : null,
       errorRate: round4(
         cases.filter((item) => item.error).length / cases.length,
       ),
@@ -171,24 +184,31 @@ export class EvalService {
       embeddingFunction: this.embeddingFunction,
     });
 
-    const chunks = splitTextIntoChunks(dataset.document, CHUNK_TOKENS);
-    const embeddings = await this.embeddingFunction.generate(chunks);
-    await this.collection.add({
-      ids: chunks.map((_, index) => `${EVAL_CV_ID}_chunk_${index}`),
-      documents: chunks.map((chunk, index) =>
-        JSON.stringify({
-          chunkIndex: index,
-          text: chunk,
-          cvId: EVAL_CV_ID,
-        }),
-      ),
-      metadatas: chunks.map((_, index) => ({
-        cvId: EVAL_CV_ID,
-        chunkIndex: index,
-      })),
-      embeddings,
-    });
-    this.logger.log(`Seeded ${chunks.length} gold chunks into ${COLLECTION_NAME}`);
+    const ids: string[] = [];
+    const documents: string[] = [];
+    const metadatas: { cvId: string; chunkIndex: number }[] = [];
+    const chunkTexts: string[] = [];
+    for (const cv of dataset.documents) {
+      const chunks = splitTextIntoChunks(cv.text, CHUNK_TOKENS);
+      chunks.forEach((chunk, index) => {
+        ids.push(`${cv.cvId}_chunk_${index}`);
+        chunkTexts.push(chunk);
+        documents.push(
+          JSON.stringify({
+            chunkIndex: index,
+            text: chunk,
+            cvId: cv.cvId,
+            label: cv.label,
+          }),
+        );
+        metadatas.push({ cvId: cv.cvId, chunkIndex: index });
+      });
+    }
+    const embeddings = await this.embeddingFunction.generate(chunkTexts);
+    await this.collection.add({ ids, documents, metadatas, embeddings });
+    this.logger.log(
+      `Seeded ${chunkTexts.length} gold chunks from ${dataset.documents.length} CVs into ${COLLECTION_NAME}`,
+    );
     return this.collection;
   }
 
@@ -211,7 +231,6 @@ export class EvalService {
       const queryResult = await collection.query({
         queryEmbeddings: [queryEmbedding],
         nResults,
-        where: { cvId: EVAL_CV_ID },
       });
       const retrievalLatencyMs = Date.now() - retrievalStarted;
 
@@ -250,6 +269,11 @@ export class EvalService {
       )
         ? 0
         : 1;
+      const abstention = goldCase.expectAbstain
+        ? answerHitRate === 1 && faithfulness === 1
+          ? 1
+          : 0
+        : null;
 
       let judge: CaseEvalResult['judge'];
       if (includeJudge) {
@@ -260,15 +284,19 @@ export class EvalService {
         retrievalHitRate >= 0.6 &&
         answerHitRate >= 0.5 &&
         faithfulness === 1 &&
+        (abstention === null || abstention === 1) &&
         (!judge || (judge.grounded && judge.relevant && judge.score >= 3));
 
       return {
         id: goldCase.id,
+        cvId: goldCase.cvId,
         question: goldCase.question,
+        goldAnswer: goldCase.goldAnswer,
         passed,
         retrievalHitRate: round4(retrievalHitRate),
         answerHitRate: round4(answerHitRate),
         faithfulness,
+        abstention,
         retrievalLatencyMs,
         generationLatencyMs,
         totalLatencyMs: Date.now() - started,
@@ -283,11 +311,14 @@ export class EvalService {
       );
       return {
         id: goldCase.id,
+        cvId: goldCase.cvId,
         question: goldCase.question,
+        goldAnswer: goldCase.goldAnswer,
         passed: false,
         retrievalHitRate: 0,
         answerHitRate: 0,
         faithfulness: 0,
+        abstention: goldCase.expectAbstain ? 0 : null,
         retrievalLatencyMs: 0,
         generationLatencyMs: 0,
         totalLatencyMs: Date.now() - started,
@@ -385,4 +416,24 @@ export class EvalService {
       .trim();
     return judgeSchema.parse(JSON.parse(cleaned));
   }
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function run() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await worker(items[index]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => run()),
+  );
+  return results;
 }

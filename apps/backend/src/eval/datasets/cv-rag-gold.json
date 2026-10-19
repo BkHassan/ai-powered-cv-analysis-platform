@@ -1,45 +1,271 @@
 {
-  "version": "1.0",
-  "description": "Fixed gold set for RAG quality. The document is seeded into an isolated Chroma collection so scores do not depend on uploaded CVs.",
-  "nResults": 5,
-  "document": "AMINA EL FADILI\nRabat, Morocco\nEmail: amina.elfadili@example.com\nPhone: +212 600 111 222\n\nPROFESSIONAL SUMMARY\nSoftware engineer with six years of experience building backend APIs and retrieval systems for hiring tools. Comfortable with NestJS, Python, and Gemini embeddings. Looking for an internship or first role around generative AI and RAG.\n\nTECHNICAL SKILLS\nProgramming: Python, TypeScript, SQL.\nFrameworks: NestJS, FastAPI, Next.js.\nAI and data: Gemini embeddings, ChromaDB, LangChain prompt chains, pdf-parse for CV text extraction.\nCloud: Docker Compose, GitHub, Dokploy. No production Vertex AI project yet.\nLanguages: Arabic (native), French (fluent), English (professional).\n\nEXPERIENCE\nAI CV Platform, MindCraft — Backend engineer, 2024 to 2026\nDesigned a NestJS API that stores candidate CVs in ChromaDB. Each PDF is split into word chunks of about 500 tokens, embedded with gemini-embedding-001, and retrieved with query embeddings. Chat answers are generated with Gemini through LangChain ChatOpenAI on the OpenAI-compatible Gemini endpoint. Built quiz generation that extracts skills then emails a candidate a multiple-choice test.\n\nAcme Health — Backend intern, 2022 to 2024\nWorked on appointment APIs in NestJS and wrote integration tests for booking conflicts. Did not work on payroll, billing, or salary systems.\n\nEDUCATION\nENSIAS, Rabat — Engineering degree in Computer Science and Artificial Intelligence, expected 2026.\nCoursework: information retrieval, neural networks, software architecture.\nCapstone: retrieval-augmented chat over internal PDF documents.\n\nCERTIFICATIONS\nNone listed for Google Cloud or Vertex AI.\n\nADDITIONAL NOTES\nThe candidate has not used COBOL, SAP, or Kubernetes in production. Salary, current compensation, and notice period are not stated anywhere in this CV.",
+  "version": "2.0",
+  "description": "Five synthetic CVs and 25 gold questions. Retrieval searches every CV, so a hit means the right passage was found. People and employers are fictional.",
+  "nResults": 4,
+  "documents": [
+    {
+      "cvId": "cv_short",
+      "label": "Short CV",
+      "text": "LINA COSTA\nCasablanca\nNurse at Clinique Atlas since 2023. Two years of ward experience. Speaks French and Arabic. No email address is printed on this CV."
+    },
+    {
+      "cvId": "cv_long",
+      "label": "Long CV",
+      "text": "YOUSSEF BENALI\nRabat, Morocco\nData engineer with eight years of experience building batch and streaming pipelines.\n\nSUMMARY\nYoussef designs warehouse models, schedules jobs, and reviews data quality with analysts. He writes in Python and SQL and prefers documented handovers.\n\nSKILLS\nSpark, Airflow, PostgreSQL, and dbt. He does not list Kafka.\n\nEXPERIENCE\nCIMR, Rabat — Data engineer, 2022 to present.\nOwns the member-contributions lakehouse. Moved nightly Spark jobs from a single virtual machine onto a small cluster. Added dbt tests for duplicate national identifiers. Partners with the finance squad every Monday.\n\nInwi, Casablanca — Data engineer, 2018 to 2022.\nBuilt Airflow pipelines for prepaid usage. Cut a failing 6-hour job into tasks that finish before 7am. Mentored two junior analysts on SQL reviews.\n\nOCP Group, internship, 2016 to 2018.\nCleaned maintenance-report spreadsheets for the Khouribga site and loaded them into PostgreSQL. Did not work on mine planning.\n\nEDUCATION\nEMI Rabat, engineering diploma, 2016. Final project: a complaint-classification prototype for a municipal hotline.\n\nOTHER\nNotice period is two months. He has no AWS certification. Salary is not written on this CV. He has no public GitHub account."
+    },
+    {
+      "cvId": "cv_layout",
+      "label": "Unusual layout",
+      "text": "SKILLS FIRST\nFigma, illustration, Arabic and French typography.\n\nSELECTED WORK\nIn 2021 Nora redesigned the paper bus ticket for the fictional carrier Alsa Nord.\nThe new ticket used a larger route number and a quieter color for night lines.\n\nSTUDIES\nEcole Supérieure des Beaux-Arts, Toulouse, diploma 2015.\n\nNAME AND CONTACT — read last\nNora El Idrissi, freelance designer in Tangier.\nPortfolio: nora.studio\nNo phone number is printed."
+    },
+    {
+      "cvId": "cv_dense",
+      "label": "Dense bullets",
+      "text": "KARIM HADDAD — Agadir\nPlatform engineer, Attijariwafa bank, 2021 to present.\n- Kubernetes, Terraform, GitHub Actions\n- Weekly on-call rotation for the payments cluster\n- Salary stated on the CV: 28000 MAD per month\nOrange Maroc, 2019 to 2021.\n- Ansible playbooks for shop routers\n- No public speaking listed"
+    },
+    {
+      "cvId": "cv_sparse",
+      "label": "Sparse academic CV",
+      "text": "SARA AMRANI\nPhD student at UM6P.\nThesis: drought stress in wheat.\n2024 paper in Journal of Arid Environments.\nNo industry role. No GitHub profile. No phone number."
+    }
+  ],
   "cases": [
     {
-      "id": "skills-python",
-      "question": "What programming languages and AI tools does this candidate list?",
-      "relevantKeywords": ["Python", "TypeScript", "Gemini", "ChromaDB"],
-      "answerKeywords": ["Python", "TypeScript"],
-      "forbiddenPhrases": ["COBOL", "Kubernetes"]
+      "id": "short-job",
+      "cvId": "cv_short",
+      "question": "What is Lina Costa's job?",
+      "goldAnswer": "Nurse at Clinique Atlas.",
+      "relevantKeywords": ["Lina Costa", "Clinique Atlas"],
+      "answerKeywords": ["nurse", "Clinique Atlas"],
+      "forbiddenPhrases": ["data engineer", "28000"]
     },
     {
-      "id": "employer-acme",
-      "question": "Where did the candidate intern before MindCraft, and what did they work on?",
-      "relevantKeywords": ["Acme Health", "appointment"],
-      "answerKeywords": ["Acme Health", "NestJS"],
-      "forbiddenPhrases": ["payroll", "salary"]
+      "id": "short-cross",
+      "cvId": "cv_short",
+      "question": "Where does Lina Costa work, and which languages does she speak?",
+      "goldAnswer": "Clinique Atlas in Casablanca. French and Arabic.",
+      "relevantKeywords": ["Clinique Atlas", "French and Arabic"],
+      "answerKeywords": ["Clinique Atlas", "French", "Arabic"],
+      "forbiddenPhrases": ["English", "Spark"]
     },
     {
-      "id": "education-ensias",
-      "question": "Which school is the candidate studying at and what is the capstone about?",
-      "relevantKeywords": ["ENSIAS", "capstone"],
-      "answerKeywords": ["ENSIAS", "retrieval"],
-      "forbiddenPhrases": ["Harvard", "MIT"]
+      "id": "short-years",
+      "cvId": "cv_short",
+      "question": "How many years of ward experience does Lina Costa list?",
+      "goldAnswer": "Two years.",
+      "relevantKeywords": ["Two years of ward"],
+      "answerKeywords": ["two"],
+      "forbiddenPhrases": ["eight years", "2021"]
     },
     {
-      "id": "missing-cobol",
-      "question": "Is the candidate an expert in COBOL?",
-      "relevantKeywords": ["COBOL"],
-      "answerKeywords": ["not", "no", "does not", "hasn't", "has not"],
+      "id": "short-city",
+      "cvId": "cv_short",
+      "question": "In which city is Lina Costa based?",
+      "goldAnswer": "Casablanca.",
+      "relevantKeywords": ["Casablanca"],
+      "answerKeywords": ["Casablanca"],
+      "forbiddenPhrases": ["Tangier", "Agadir", "Rabat"]
+    },
+    {
+      "id": "short-email-missing",
+      "cvId": "cv_short",
+      "question": "What is Lina Costa's email address?",
+      "goldAnswer": "No email is printed on her CV.",
+      "relevantKeywords": ["No email address"],
+      "answerKeywords": ["no email", "not printed", "not listed", "not provided", "no address", "not stated", "not mentioned"],
       "answerMatch": "any",
-      "forbiddenPhrases": ["expert in COBOL", "specializes in COBOL", "years of COBOL"]
+      "forbiddenPhrases": ["@gmail", "@atlas", "lina.costa@"],
+      "expectAbstain": true
     },
     {
-      "id": "missing-salary",
-      "question": "What is the candidate's current salary in MAD?",
-      "relevantKeywords": ["Salary"],
-      "answerKeywords": ["not", "no", "unavailable", "does not", "isn't"],
+      "id": "long-tools",
+      "cvId": "cv_long",
+      "question": "Which data tools does Youssef Benali list?",
+      "goldAnswer": "Spark, Airflow, PostgreSQL, and dbt. Not Kafka.",
+      "relevantKeywords": ["Spark, Airflow, PostgreSQL, and dbt"],
+      "answerKeywords": ["Spark", "Airflow", "PostgreSQL", "dbt"],
+      "forbiddenPhrases": ["Kafka", "Kubernetes"]
+    },
+    {
+      "id": "long-cross",
+      "cvId": "cv_long",
+      "question": "What did Youssef Benali study, and where does he work now?",
+      "goldAnswer": "EMI Rabat, 2016. He is a data engineer at CIMR.",
+      "relevantKeywords": ["EMI Rabat", "CIMR"],
+      "answerKeywords": ["EMI", "CIMR"],
+      "forbiddenPhrases": ["UM6P", "Attijariwafa"]
+    },
+    {
+      "id": "long-ocp",
+      "cvId": "cv_long",
+      "question": "What did Youssef Benali do during his OCP internship?",
+      "goldAnswer": "Cleaned maintenance-report spreadsheets for Khouribga and loaded them into PostgreSQL. Not mine planning.",
+      "relevantKeywords": ["Khouribga", "maintenance-report"],
+      "answerKeywords": ["Khouribga", "PostgreSQL"],
+      "forbiddenPhrases": ["mine planning"]
+    },
+    {
+      "id": "long-notice",
+      "cvId": "cv_long",
+      "question": "What notice period does Youssef Benali state?",
+      "goldAnswer": "Two months.",
+      "relevantKeywords": ["Notice period is two months"],
+      "answerKeywords": ["two months"],
+      "forbiddenPhrases": ["one week", "immediate"]
+    },
+    {
+      "id": "long-aws-missing",
+      "cvId": "cv_long",
+      "question": "Which AWS certification does Youssef Benali hold?",
+      "goldAnswer": "None. The CV says he has no AWS certification.",
+      "relevantKeywords": ["no AWS certification"],
+      "answerKeywords": ["no aws", "not hold", "does not hold", "none", "no certification"],
       "answerMatch": "any",
-      "forbiddenPhrases": ["150000", "15,000", "20000 MAD"]
+      "forbiddenPhrases": ["Solutions Architect", "AWS Certified"],
+      "expectAbstain": true
+    },
+    {
+      "id": "layout-name",
+      "cvId": "cv_layout",
+      "question": "What is the designer's name, and where does she freelance?",
+      "goldAnswer": "Nora El Idrissi, Tangier.",
+      "relevantKeywords": ["Nora El Idrissi", "Tangier"],
+      "answerKeywords": ["Nora El Idrissi", "Tangier"],
+      "forbiddenPhrases": ["Casablanca", "Lina"]
+    },
+    {
+      "id": "layout-cross",
+      "cvId": "cv_layout",
+      "question": "Which school did Nora El Idrissi attend, and what ticket did she redesign in 2021?",
+      "goldAnswer": "Ecole Supérieure des Beaux-Arts, Toulouse. The Alsa Nord bus ticket.",
+      "relevantKeywords": ["Beaux-Arts", "Alsa Nord"],
+      "answerKeywords": ["Beaux-Arts", "Alsa Nord"],
+      "forbiddenPhrases": ["EMI", "ISCAE"]
+    },
+    {
+      "id": "layout-tool",
+      "cvId": "cv_layout",
+      "question": "Which design tool does Nora El Idrissi list first?",
+      "goldAnswer": "Figma.",
+      "relevantKeywords": ["Figma"],
+      "answerKeywords": ["Figma"],
+      "forbiddenPhrases": ["Photoshop", "Spark"]
+    },
+    {
+      "id": "layout-portfolio",
+      "cvId": "cv_layout",
+      "question": "What is Nora El Idrissi's portfolio address?",
+      "goldAnswer": "nora.studio",
+      "relevantKeywords": ["nora.studio"],
+      "answerKeywords": ["nora.studio"],
+      "forbiddenPhrases": ["github.com"]
+    },
+    {
+      "id": "layout-phone-missing",
+      "cvId": "cv_layout",
+      "question": "What is Nora El Idrissi's phone number?",
+      "goldAnswer": "No phone number is printed.",
+      "relevantKeywords": ["No phone number is printed"],
+      "answerKeywords": ["no phone", "not printed", "not listed", "not provided", "none"],
+      "answerMatch": "any",
+      "forbiddenPhrases": ["+212", "06"],
+      "expectAbstain": true
+    },
+    {
+      "id": "dense-employer",
+      "cvId": "cv_dense",
+      "question": "Where does Karim Haddad work now, and what is his on-call pattern?",
+      "goldAnswer": "Attijariwafa bank. Weekly on-call for the payments cluster.",
+      "relevantKeywords": ["Attijariwafa", "Weekly on-call"],
+      "answerKeywords": ["Attijariwafa", "weekly"],
+      "forbiddenPhrases": ["CIMR", "Clinique"]
+    },
+    {
+      "id": "dense-salary",
+      "cvId": "cv_dense",
+      "question": "What monthly salary does Karim Haddad's CV state?",
+      "goldAnswer": "28000 MAD per month.",
+      "relevantKeywords": ["28000 MAD"],
+      "answerKeywords": ["28000"],
+      "forbiddenPhrases": ["not stated", "unavailable"]
+    },
+    {
+      "id": "dense-orange",
+      "cvId": "cv_dense",
+      "question": "What did Karim Haddad do at Orange Maroc, and when?",
+      "goldAnswer": "Ansible playbooks for shop routers, 2019 to 2021.",
+      "relevantKeywords": ["Orange Maroc", "Ansible"],
+      "answerKeywords": ["Orange", "Ansible", "2019"],
+      "forbiddenPhrases": ["Spark", "Figma"]
+    },
+    {
+      "id": "dense-tools",
+      "cvId": "cv_dense",
+      "question": "Which infrastructure tools does Karim Haddad list for his bank role?",
+      "goldAnswer": "Kubernetes, Terraform, and GitHub Actions.",
+      "relevantKeywords": ["Kubernetes, Terraform, GitHub Actions"],
+      "answerKeywords": ["Kubernetes", "Terraform"],
+      "forbiddenPhrases": ["dbt", "Figma"]
+    },
+    {
+      "id": "dense-speaking-missing",
+      "cvId": "cv_dense",
+      "question": "Which conference talk did Karim Haddad give?",
+      "goldAnswer": "None. No public speaking is listed.",
+      "relevantKeywords": ["No public speaking listed"],
+      "answerKeywords": ["no public speaking", "not listed", "none", "no talk", "not mention"],
+      "answerMatch": "any",
+      "forbiddenPhrases": ["DevOpsDays", "keynote"],
+      "expectAbstain": true
+    },
+    {
+      "id": "sparse-thesis",
+      "cvId": "cv_sparse",
+      "question": "What is Sara Amrani's thesis about, and where does she study?",
+      "goldAnswer": "Drought stress in wheat, at UM6P.",
+      "relevantKeywords": ["drought stress in wheat", "UM6P"],
+      "answerKeywords": ["wheat", "UM6P"],
+      "forbiddenPhrases": ["EMI", "nurse"]
+    },
+    {
+      "id": "sparse-paper",
+      "cvId": "cv_sparse",
+      "question": "In which journal did Sara Amrani publish in 2024?",
+      "goldAnswer": "Journal of Arid Environments.",
+      "relevantKeywords": ["Journal of Arid Environments"],
+      "answerKeywords": ["Arid Environments"],
+      "forbiddenPhrases": ["Nature", "IEEE"]
+    },
+    {
+      "id": "sparse-industry",
+      "cvId": "cv_sparse",
+      "question": "Which company employs Sara Amrani?",
+      "goldAnswer": "None. She has no industry role.",
+      "relevantKeywords": ["No industry role"],
+      "answerKeywords": ["no industry", "not employed", "no company", "none", "does not work"],
+      "answerMatch": "any",
+      "forbiddenPhrases": ["Attijariwafa", "CIMR", "Inwi"],
+      "expectAbstain": true
+    },
+    {
+      "id": "sparse-year",
+      "cvId": "cv_sparse",
+      "question": "When did Sara Amrani publish her paper?",
+      "goldAnswer": "2024.",
+      "relevantKeywords": ["2024 paper"],
+      "answerKeywords": ["2024"],
+      "forbiddenPhrases": ["2016", "2021"]
+    },
+    {
+      "id": "sparse-github-missing",
+      "cvId": "cv_sparse",
+      "question": "What is Sara Amrani's GitHub profile?",
+      "goldAnswer": "She has no GitHub profile.",
+      "relevantKeywords": ["No GitHub profile"],
+      "answerKeywords": ["no github", "not have", "does not have", "none", "no profile"],
+      "answerMatch": "any",
+      "forbiddenPhrases": ["github.com/sara", "github.com/amrani"],
+      "expectAbstain": true
     }
   ]
 }

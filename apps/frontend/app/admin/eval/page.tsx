@@ -9,11 +9,14 @@ import { Button } from "@/components/ui/button";
 
 type CaseResult = {
   id: string;
+  cvId: string;
   question: string;
+  goldAnswer: string;
   passed: boolean;
   retrievalHitRate: number;
   answerHitRate: number;
   faithfulness: number;
+  abstention: number | null;
   totalLatencyMs: number;
   retrievedPreview: string;
   answerPreview: string;
@@ -29,6 +32,7 @@ type EvalSummary = {
   retrievalHitRate: number;
   answerHitRate: number;
   faithfulness: number;
+  abstention: number | null;
   errorRate: number;
   latencyMs: { avg: number; p50: number; p95: number };
   cases: CaseResult[];
@@ -126,10 +130,9 @@ export default function EvalPage() {
               RAG quality evaluation
             </h1>
             <p className="text-gray-600 mb-4">
-              Runs a fixed gold CV through the same embedding, Chroma retrieval,
-              and Gemini chat path as production. Scores retrieval relevance,
-              answer relevance, faithfulness, errors, and latency. Production CVs
-              are not modified.
+              Searches five synthetic CVs at once (25 gold questions). Scores
+              retrieval, answer correctness, faithfulness, abstention when the
+              fact is missing, errors, and latency. Uploaded CVs are not used.
             </p>
             <label className="flex items-center gap-2 text-sm text-gray-700 mb-4">
               <input
@@ -144,8 +147,8 @@ export default function EvalPage() {
             </Button>
             {running && (
               <p className="mt-4 text-sm text-gray-600">
-                Waiting on Gemini. If the free-tier quota of 20 requests is
-                already used, this returns an error instead of retrying.
+                Twenty-five Gemini answers, three at a time. This takes several
+                minutes and needs quota beyond the free tier of 20 requests.
               </p>
             )}
             {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
@@ -166,6 +169,14 @@ export default function EvalPage() {
                 <ScoreCard
                   label="Faithfulness"
                   value={percent(summary.faithfulness)}
+                />
+                <ScoreCard
+                  label="Abstention"
+                  value={
+                    summary.abstention === null
+                      ? "—"
+                      : percent(summary.abstention)
+                  }
                 />
               </section>
               <section className="rounded-xl bg-white p-6 shadow-sm text-sm text-gray-700">
@@ -200,7 +211,12 @@ export default function EvalPage() {
                     <p className="text-sm text-gray-600 mb-2">
                       retrieval {percent(item.retrievalHitRate)} · answer{" "}
                       {percent(item.answerHitRate)} · faithfulness{" "}
-                      {percent(item.faithfulness)} · {item.totalLatencyMs} ms
+                      {percent(item.faithfulness)}
+                      {item.abstention === null
+                        ? ""
+                        : ` · abstention ${percent(item.abstention)}`}
+                      {" · "}
+                      {item.totalLatencyMs} ms
                     </p>
                     {item.judge && (
                       <p className="text-sm text-gray-600 mb-2">
@@ -212,6 +228,9 @@ export default function EvalPage() {
                     {item.error && (
                       <p className="text-sm text-red-600">{item.error}</p>
                     )}
+                    <p className="text-sm text-gray-500 mt-2">
+                      Gold: {item.goldAnswer}
+                    </p>
                     <p className="text-sm text-gray-500 mt-2">
                       Retrieved: {item.retrievedPreview || "—"}
                     </p>
