@@ -342,7 +342,7 @@ export class EvalService {
     ms: number,
     label: string,
   ): Promise<T> {
-    let timer: NodeJS.Timeout;
+    let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
         () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
