@@ -111,7 +111,18 @@ export class EvalService {
 
   async run(includeJudge = false): Promise<EvalSummary> {
     const dataset = this.loadDataset();
-    const collection = await this.seedCollection(dataset);
+    let collection: Collection;
+    try {
+      collection = await this.seedCollection(dataset);
+    } catch (error) {
+      const message = this.readableEvalError(error);
+      this.logger.error('Eval seeding failed', message);
+      return this.summarize(
+        dataset.version,
+        dataset.cases.map((goldCase) => this.notRun(goldCase, message)),
+        message,
+      );
+    }
     const saved = this.loadSavedCases(dataset.version);
     const cases: CaseEvalResult[] = [];
     let stoppedReason: string | null = null;
@@ -446,12 +457,20 @@ export class EvalService {
   }
 
   private saveCases(version: string, cases: CaseEvalResult[]) {
-    const filePath = this.resultsPath(version);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(
-      filePath,
-      JSON.stringify({ datasetVersion: version, cases }, null, 2),
-    );
+    try {
+      const filePath = this.resultsPath(version);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({ datasetVersion: version, cases }, null, 2),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not save eval progress: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
   }
 
   private readableEvalError(error: unknown): string {
